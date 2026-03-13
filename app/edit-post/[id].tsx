@@ -1,8 +1,8 @@
 /**
- * Create Post screen
- * Lets the user write a new post with a title, body, and optional tags.
- * On submit the post is persisted via PostsContext (AsyncStorage) and the
- * screen navigates back to the feed.
+ * Edit Post screen
+ * Pre-fills from the existing post (looked up by [id] URL param).
+ * On save, updates the post in AsyncStorage via PostsContext, sets editedAt,
+ * and navigates back. The "edited" badge will appear on the post card and detail view.
  *
  * Two-press tag deletion:
  *   First tap  → chip turns red (pending delete)
@@ -11,24 +11,38 @@
  */
 import { ScrollView, Text, TextInput, StyleSheet, View, Pressable } from "react-native";
 import { useState } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { usePosts } from "../context/PostsContext";
-import PrimaryButton from "../components/PrimaryButton";
-import TagChip from "../components/TagChip";
+import { useLocalSearchParams, router } from "expo-router";
+import { useTheme } from "../../context/ThemeContext";
+import { usePosts } from "../../context/PostsContext";
+import PrimaryButton from "../../components/PrimaryButton";
+import TagChip from "../../components/TagChip";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
 
-export default function CreatePost() {
+export default function EditPost() {
   const { colors } = useTheme();
-  const { createPost } = usePosts();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { posts, editPost } = usePosts();
 
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  // Look up the post to pre-fill the form
+  const existing = posts.find((p) => p.id === id);
+
+  // State initialised from the existing post (or empty fallbacks for safety)
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [body, setBody] = useState(existing?.body ?? "");
+  const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
   const [newTag, setNewTag] = useState("");
 
   // Tracks which tag chip is in the "pending delete" state
   const [pendingTag, setPendingTag] = useState<string | null>(null);
+
+  // Guard: if the post was deleted between navigation and render, show a fallback
+  if (!existing) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <Text style={{ color: colors.text, padding: 16 }}>Post not found.</Text>
+      </SafeAreaView>
+    );
+  }
 
   /** Adds a non-duplicate tag to the list */
   function addTag() {
@@ -52,10 +66,10 @@ export default function CreatePost() {
     }
   }
 
-  /** Validates inputs, persists the post, then returns to the feed */
-  async function handleSubmit() {
+  /** Validates inputs, persists the edit (sets editedAt), then goes back */
+  async function handleSave() {
     if (!title.trim() || !body.trim()) return;
-    await createPost(title.trim(), body.trim(), tags);
+    await editPost(id!, title.trim(), body.trim(), tags);
     router.back();
   }
 
@@ -64,7 +78,7 @@ export default function CreatePost() {
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 16 }}>
         {/* Clears any pending-delete tag when tapping blank space or labels */}
         <Pressable onPress={() => setPendingTag(null)}>
-        <Text style={[styles.heading, { color: colors.text }]}>New Post</Text>
+        <Text style={[styles.heading, { color: colors.text }]}>Edit Post</Text>
 
         {/* ── Post content ─────────────────────────────────── */}
         <Text style={[styles.label, { color: colors.text }]}>Title</Text>
@@ -89,7 +103,6 @@ export default function CreatePost() {
         {/* ── Tags ─────────────────────────────────────────── */}
         <Text style={[styles.label, { color: colors.text }]}>Tags</Text>
 
-        {/* Tag input row — pressing Enter/Done also triggers addTag */}
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
           <TextInput
             style={[styles.input, { flex: 1, marginBottom: 0, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
@@ -134,8 +147,8 @@ export default function CreatePost() {
             textStyle={{ color: colors.text }}
           />
           <PrimaryButton
-            label="Create Post"
-            onPress={handleSubmit}
+            label="Save Changes"
+            onPress={handleSave}
             buttonStyle={{ flex: 1, backgroundColor: colors.primary }}
             textStyle={{ color: colors.text }}
           />
