@@ -33,6 +33,7 @@ import {
   TextInput,
   Pressable,
   PanResponder,
+  Image,
 } from "react-native";
 import { useState, useRef, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -163,7 +164,13 @@ export default function ProfileScreen() {
               {/* Outer Pressable clears any pending-delete tag when the user taps
                   blank space, a label, or any non-interactive element. */}
               <Pressable onPress={() => setPendingTag(null)}>
-              <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+              <View style={styles.profileHeader}>
+                <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+                <Image
+                  source={require("../../assets/images/Hobbily_Logo.png")}
+                  style={styles.headerLogo}
+                />
+              </View>
 
               <InputField
                 label="Username"
@@ -263,7 +270,14 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 16 },
+  profileHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  title: { fontSize: 28, fontWeight: "700" },
+  headerLogo: { width: 32, height: 32, resizeMode: "contain" },
   label: { fontWeight: "600", fontSize: 16, marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 12 },
   hint: { fontSize: 12, marginBottom: 4, fontStyle: "italic" },
