@@ -1,47 +1,29 @@
 /**
- * Home / Feed screen
+ * Feed screen (tab index 0)
  * Shows the weather widget at the top, then a scrollable list of all community posts.
- *
- * Swipe left to navigate to the Profile tab with a slide animation:
- *   - The screen slides left with the finger in real time.
- *   - Release past SWIPE_THRESHOLD → flies off-screen, then navigates.
- *   - Release short of threshold → springs back to centre.
- *
- * Animation notes:
- *   - Outer View has overflow:'hidden' so content clips cleanly at the screen edge.
- *   - Animated.View has backgroundColor so it's fully opaque while sliding.
- *   - SafeAreaView is INSIDE Animated.View so safe-area insets slide with the content.
- *   - onMoveShouldSetPanResponderCapture intercepts horizontal gestures before
- *     the ScrollView child can claim them, so the slide always works.
- *   - useFocusEffect resets translateX to 0 whenever this tab gains focus,
- *     ensuring the screen is always at the correct position when it appears.
+ * Swipe left to go to Schedule, swipe right — no previous tab.
  */
 import {
   View,
-  Animated,
-  Dimensions,
   ScrollView,
   Text,
   StyleSheet,
   Pressable,
-  PanResponder,
+  Image,
 } from "react-native";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
 import WeatherBox from "../../components/WeatherBox";
 import PostCard from "../../components/PostCard";
+import SwipeableTab from "../../components/SwipeableTab";
 import { fetchWeather } from "../../services/weatherService";
 import { useTheme } from "../../context/ThemeContext";
 import { usePosts } from "../../context/PostsContext";
 import { useProfile } from "../../context/ProfileContext";
 import { router } from "expo-router";
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SWIPE_THRESHOLD = 80;
-
-export default function PostsScreen() {
+export default function FeedScreen() {
   const { colors } = useTheme();
   const { posts, deletePost, isLoading } = usePosts();
   const { profile, saveProfile } = useProfile();
@@ -49,25 +31,13 @@ export default function PostsScreen() {
   const [weather, setWeather] = useState<any>(null);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
 
-  const translateX = useRef(new Animated.Value(0)).current;
-
-  /**
-   * Safety net: reset the slide position every time this tab comes into focus.
-   * This guarantees the screen is at translateX=0 even if a previous navigation
-   * left the native transform in a bad state.
-   */
-  useFocusEffect(
-    useCallback(() => {
-      translateX.setValue(0);
-    }, [translateX])
-  );
-
   useEffect(() => {
     loadWeather(profile.preferredCity || "London");
   }, []);
 
   async function loadWeather(city: string) {
     const data = await fetchWeather(city);
+    if (!data || data.cod === "404") return;
     setWeather({
       city: data.name,
       temperature: Math.round(data.main.temp),
@@ -82,117 +52,125 @@ export default function PostsScreen() {
     await saveProfile({ ...profile, preferredCity: city });
   }
 
-  function snapBack() {
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 8,
-    }).start();
-  }
-
-  const swipePan = useRef(
-    PanResponder.create({
-      // Capture phase so we get horizontal gestures before ScrollView can claim them
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        Math.abs(g.dx) > 20 && Math.abs(g.dy) < Math.abs(g.dx) * 0.5,
-
-      // Track leftward drag only
-      onPanResponderMove: (_, g) => {
-        if (g.dx < 0) translateX.setValue(g.dx);
-      },
-
-      onPanResponderRelease: (_, g) => {
-        if (g.dx < -SWIPE_THRESHOLD && Math.abs(g.dy) < 120) {
-          Animated.timing(translateX, {
-            toValue: -SCREEN_WIDTH,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            // Navigate FIRST (this screen goes to background), THEN reset.
-            // Resetting before navigation can leave the native transform in a
-            // bad state when the tab comes back into view.
-            router.navigate("/(tabs)/profile");
-            translateX.setValue(0);
-          });
-        } else {
-          snapBack();
-        }
-      },
-
-      onPanResponderTerminate: () => snapBack(),
-    })
-  ).current;
-
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background, overflow: "hidden" }}>
-      <Animated.View
-        style={{ flex: 1, backgroundColor: colors.background, transform: [{ translateX }] }}
-        {...swipePan.panHandlers}
-      >
-        <SafeAreaView style={{ flex: 1 }}>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-          >
-            {weather && (
-              <WeatherBox
-                weather={weather}
-                coords={coords}
-                onCitySelect={handleCitySelect}
-                colors={colors}
-              />
-            )}
+    <SwipeableTab tabIndex={0} backgroundColor={colors.background}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <View>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Hobbily</Text>
+            <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
+              What's the community sharing?
+            </Text>
+          </View>
+          <Image
+            source={require("../../assets/images/Hobbily_Logo.png")}
+            style={styles.headerLogo}
+          />
+        </View>
 
-            <View style={styles.feedHeader}>
-              <Text style={[styles.feedTitle, { color: colors.text }]}>Community Posts</Text>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {weather && (
+            <WeatherBox
+              weather={weather}
+              coords={coords}
+              onCitySelect={handleCitySelect}
+              colors={colors}
+            />
+          )}
+
+          <View style={styles.feedHeader}>
+            <Text style={[styles.feedTitle, { color: colors.text }]}>Community Posts</Text>
+            <Pressable
+              onPress={() => router.push("/create-post")}
+              style={[styles.newPostBtn, { backgroundColor: colors.primary }]}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.newPostBtnText}>New Post</Text>
+            </Pressable>
+          </View>
+
+          {!isLoading && posts.length === 0 && (
+            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Ionicons name="newspaper-outline" size={44} color={colors.secondaryText} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
+              <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>
+                Be the first to share something with the community!
+              </Text>
               <Pressable
                 onPress={() => router.push("/create-post")}
-                style={[styles.newPostBtn, { backgroundColor: colors.primary }]}
+                style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
               >
-                <Ionicons name="add" size={20} color="#fff" />
-                <Text style={styles.newPostBtnText}>New Post</Text>
+                <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Create a Post</Text>
               </Pressable>
             </View>
+          )}
 
-            {!isLoading && posts.length === 0 && (
-              <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
-                No posts yet. Be the first to share something!
-              </Text>
-            )}
-
-            {posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                colors={colors}
-                onEdit={() => router.push(`/edit-post/${post.id}`)}
-                onDelete={() => deletePost(post.id)}
-              />
-            ))}
-          </ScrollView>
-        </SafeAreaView>
-      </Animated.View>
-    </View>
+          {posts.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              colors={colors}
+              onEdit={() => router.push(`/edit-post/${post.id}`)}
+              onDelete={() => deletePost(post.id)}
+            />
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </SwipeableTab>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, marginTop: 2 },
+  headerLogo: { width: 36, height: 36, resizeMode: "contain" },
   feedHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  feedTitle: { fontSize: 20, fontWeight: "700" },
+  feedTitle: { fontSize: 18, fontWeight: "700" },
   newPostBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
-  newPostBtnText: { color: "#fff", fontWeight: "600" },
-  emptyText: { textAlign: "center", marginTop: 32, fontSize: 15 },
+  newPostBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  emptyCard: {
+    alignItems: "center",
+    padding: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginTop: 8,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: "700", marginTop: 12, marginBottom: 6 },
+  emptyBody: { textAlign: "center", fontSize: 14, lineHeight: 20, marginBottom: 20 },
+  emptyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
 });

@@ -2,11 +2,12 @@ import { Stack } from "expo-router";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { ProfileProvider } from "../context/ProfileContext";
 import { PostsProvider } from "../context/PostsContext";
+import { TimeProvider } from "../context/TimeContext";
+import { CommunityProvider } from "../context/CommunityContext";
 import { usePosts } from "../context/PostsContext";
 import { View, Image, Animated, StyleSheet } from "react-native";
 import { useEffect, useRef, useState } from "react";
 
-/** Renders the app stack with a logo splash that fades out once posts have loaded */
 function AppShell() {
   const { isLoading } = usePosts();
   const { colors } = useTheme();
@@ -46,7 +47,11 @@ export default function RootLayout() {
     <ThemeProvider>
       <ProfileProvider>
         <PostsProvider>
-          <AppShell />
+          <TimeProvider>
+            <CommunityProvider>
+              <AppShell />
+            </CommunityProvider>
+          </TimeProvider>
         </PostsProvider>
       </ProfileProvider>
     </ThemeProvider>

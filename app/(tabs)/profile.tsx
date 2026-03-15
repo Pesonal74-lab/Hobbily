@@ -2,52 +2,32 @@
  * Profile screen
  * Users can edit their username, age, bio, and hobby tags.
  * Changes are saved to AsyncStorage via ProfileContext.
- * The dark/light mode toggle is also here for easy access.
+ * The dark/light mode toggle is also here.
  *
  * Two-press tag deletion:
  *   First tap  → chip turns red (pending delete)
  *   Second tap → chip is removed
- *   Tapping a different chip → resets the pending state of the previous one
- *
- * Swipe right to navigate to the Feed tab with a slide animation:
- *   - The screen slides right with the finger in real time.
- *   - Release past SWIPE_THRESHOLD → flies off-screen, then navigates.
- *   - Release short of threshold → springs back to centre.
- *
- * Animation notes:
- *   - Outer View has overflow:'hidden' so content clips cleanly at the screen edge.
- *   - Animated.View has backgroundColor so it's fully opaque while sliding.
- *   - SafeAreaView is INSIDE Animated.View so safe-area insets slide with the content.
- *   - onMoveShouldSetPanResponderCapture intercepts horizontal gestures before
- *     ScrollView children can claim them, so the slide always works.
- *   - useFocusEffect resets translateX to 0 whenever this tab gains focus,
- *     ensuring the screen is always at the correct position when it appears.
+ *   Tapping a different chip → resets the pending state
  */
 import {
   View,
-  Animated,
-  Dimensions,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   Pressable,
-  PanResponder,
   Image,
+  TouchableOpacity,
 } from "react-native";
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
 import InputField from "../../components/InputField";
-import PrimaryButton from "../../components/PrimaryButton";
 import TagChip from "../../components/TagChip";
 import ConfirmModal from "../../components/ConfirmModal";
-import { router } from "expo-router";
-
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SWIPE_THRESHOLD = 80;
+import SwipeableTab from "../../components/SwipeableTab";
 
 export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -58,19 +38,6 @@ export default function ProfileScreen() {
   const [pendingTag, setPendingTag] = useState<string | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  const translateX = useRef(new Animated.Value(0)).current;
-
-  /**
-   * Safety net: reset the slide position every time this tab comes into focus.
-   * This guarantees the screen is at translateX=0 even if a previous navigation
-   * left the native transform in a bad state.
-   */
-  useFocusEffect(
-    useCallback(() => {
-      translateX.setValue(0);
-    }, [translateX])
-  );
 
   function addHobby() {
     const tag = newTag.trim();
@@ -111,149 +78,139 @@ export default function ProfileScreen() {
     await saveProfile(draft);
   }
 
-  function snapBack() {
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 8,
-    }).start();
-  }
-
-  const swipePan = useRef(
-    PanResponder.create({
-      // Capture phase so we get horizontal gestures before ScrollView can claim them
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        Math.abs(g.dx) > 20 && Math.abs(g.dy) < Math.abs(g.dx) * 0.5,
-
-      // Track rightward drag only
-      onPanResponderMove: (_, g) => {
-        if (g.dx > 0) translateX.setValue(g.dx);
-      },
-
-      onPanResponderRelease: (_, g) => {
-        if (g.dx > SWIPE_THRESHOLD && Math.abs(g.dy) < 120) {
-          Animated.timing(translateX, {
-            toValue: SCREEN_WIDTH,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            // Navigate FIRST (this screen goes to background), THEN reset.
-            // Resetting before navigation can leave the native transform in a
-            // bad state when the tab comes back into view.
-            router.navigate("/(tabs)/");
-            translateX.setValue(0);
-          });
-        } else {
-          snapBack();
-        }
-      },
-
-      onPanResponderTerminate: () => snapBack(),
-    })
-  ).current;
-
   return (
-    <>
-      <View style={{ flex: 1, backgroundColor: colors.background, overflow: "hidden" }}>
-        <Animated.View
-          style={{ flex: 1, backgroundColor: colors.background, transform: [{ translateX }] }}
-          {...swipePan.panHandlers}
+    <SwipeableTab tabIndex={4} backgroundColor={colors.background}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={toggleTheme}
+              style={[styles.themeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Ionicons name={isDark ? "sunny-outline" : "moon-outline"} size={20} color={colors.text} />
+            </TouchableOpacity>
+            <Image
+              source={require("../../assets/images/Hobbily_Logo.png")}
+              style={styles.headerLogo}
+            />
+          </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          showsVerticalScrollIndicator={false}
         >
-          <SafeAreaView style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 16 }}>
-              {/* Outer Pressable clears any pending-delete tag when the user taps
-                  blank space, a label, or any non-interactive element. */}
-              <Pressable onPress={() => setPendingTag(null)}>
-              <View style={styles.profileHeader}>
-                <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
-                <Image
-                  source={require("../../assets/images/Hobbily_Logo.png")}
-                  style={styles.headerLogo}
-                />
+          {/* Outer Pressable clears any pending-delete tag when tapping blank space */}
+          <Pressable onPress={() => setPendingTag(null)}>
+
+            {/* Avatar card */}
+            <View style={[styles.avatarCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+                <Text style={styles.avatarInitial}>
+                  {(draft.username || "?")[0].toUpperCase()}
+                </Text>
               </View>
-
-              <InputField
-                label="Username"
-                value={draft.username}
-                onChangeText={(username) => setDraft({ ...draft, username })}
-                containerStyle={{ backgroundColor: colors.card }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border }}
-              />
-
-              <InputField
-                label="Age"
-                value={draft.age}
-                onChangeText={(age) => setDraft({ ...draft, age })}
-                containerStyle={{ backgroundColor: colors.card }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border }}
-                keyboardType="number-pad"
-              />
-
-              <InputField
-                label="About Me"
-                value={draft.bio}
-                onChangeText={(bio) => setDraft({ ...draft, bio })}
-                containerStyle={{ backgroundColor: colors.card }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border }}
-                multiline
-              />
-
-              <Text style={[styles.label, { color: colors.text, marginTop: 12 }]}>Add Hobby</Text>
-
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                <TextInput
-                  style={[styles.input, { flex: 1, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-                  placeholder="Enter hobby name"
-                  placeholderTextColor={colors.secondaryText}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  onSubmitEditing={addHobby}
-                />
-                <PrimaryButton
-                  label="Add"
-                  onPress={addHobby}
-                  buttonStyle={{ backgroundColor: colors.primary, marginLeft: 8, paddingHorizontal: 12 }}
-                  textStyle={{ color: colors.text }}
-                />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.displayName, { color: colors.text }]}>
+                  {draft.username || "Your name"}
+                </Text>
+                {draft.age ? (
+                  <Text style={[styles.displayAge, { color: colors.secondaryText }]}>
+                    Age {draft.age}
+                  </Text>
+                ) : null}
+                {draft.bio ? (
+                  <Text style={[styles.displayBio, { color: colors.secondaryText }]} numberOfLines={1}>
+                    {draft.bio}
+                  </Text>
+                ) : null}
               </View>
+            </View>
 
+            <InputField
+              label="Username"
+              value={draft.username}
+              onChangeText={(username) => setDraft({ ...draft, username })}
+              containerStyle={{ backgroundColor: "transparent" }}
+              labelStyle={{ color: colors.text }}
+              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+            />
+
+            <InputField
+              label="Age"
+              value={draft.age}
+              onChangeText={(age) => setDraft({ ...draft, age })}
+              containerStyle={{ backgroundColor: "transparent" }}
+              labelStyle={{ color: colors.text }}
+              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+              keyboardType="number-pad"
+            />
+
+            <InputField
+              label="About Me"
+              value={draft.bio}
+              onChangeText={(bio) => setDraft({ ...draft, bio })}
+              containerStyle={{ backgroundColor: "transparent" }}
+              labelStyle={{ color: colors.text }}
+              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+              multiline
+            />
+
+            <Text style={[styles.label, { color: colors.text, marginTop: 4 }]}>My Hobbies</Text>
+
+            <View style={[styles.hobbyInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.hobbyInput, { color: colors.text }]}
+                placeholder="Add a hobby..."
+                placeholderTextColor={colors.secondaryText}
+                value={newTag}
+                onChangeText={setNewTag}
+                onSubmitEditing={addHobby}
+              />
+              <TouchableOpacity
+                onPress={addHobby}
+                style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {draft.hobbies.length > 0 ? (
+              <>
+                <Text style={[styles.hint, { color: colors.secondaryText }]}>
+                  Tap once to select for removal, tap again to delete.
+                </Text>
+                <View style={styles.tagWrap}>
+                  {draft.hobbies.map((tag) => (
+                    <TagChip
+                      key={tag}
+                      label={tag}
+                      textColor={colors.text}
+                      isPendingDelete={pendingTag === tag}
+                      onPress={() => handleTagPress(tag)}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : (
               <Text style={[styles.hint, { color: colors.secondaryText }]}>
-                Tap a tag once to select it for deletion, tap again to confirm.
+                No hobbies added yet — add some above!
               </Text>
+            )}
 
-              <View style={{ flexDirection: "row", flexWrap: "wrap", marginVertical: 8 }}>
-                {draft.hobbies.map((tag) => (
-                  <TagChip
-                    key={tag}
-                    label={tag}
-                    textColor={colors.text}
-                    isPendingDelete={pendingTag === tag}
-                    onPress={() => handleTagPress(tag)}
-                  />
-                ))}
-              </View>
+            <TouchableOpacity
+              onPress={requestSave}
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+            >
+              <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.saveBtnText}>Save Changes</Text>
+            </TouchableOpacity>
 
-              <PrimaryButton
-                label="Save Changes"
-                onPress={requestSave}
-                buttonStyle={{ backgroundColor: colors.primary }}
-                textStyle={{ color: colors.text }}
-              />
-
-              <PrimaryButton
-                label={`Toggle ${isDark ? "Light" : "Dark"} Mode`}
-                onPress={toggleTheme}
-                buttonStyle={{ backgroundColor: colors.primary }}
-                textStyle={{ color: colors.text }}
-              />
-              </Pressable>
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
-      </View>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
 
       <ConfirmModal
         visible={saveModalVisible}
@@ -265,20 +222,79 @@ export default function ProfileScreen() {
         onConfirm={handleConfirmSave}
         onCancel={() => setSaveModalVisible(false)}
       />
-    </>
+    </SwipeableTab>
   );
 }
 
 const styles = StyleSheet.create({
-  profileHeader: {
+  container: { flex: 1 },
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
-  title: { fontSize: 28, fontWeight: "700" },
-  headerLogo: { width: 32, height: 32, resizeMode: "contain" },
-  label: { fontWeight: "600", fontSize: 16, marginBottom: 4 },
-  input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 12 },
-  hint: { fontSize: 12, marginBottom: 4, fontStyle: "italic" },
+  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerLogo: { width: 36, height: 36, resizeMode: "contain" },
+  themeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  avatarCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 14,
+  },
+  avatarCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitial: { color: "#fff", fontSize: 26, fontWeight: "800" },
+  displayName: { fontSize: 18, fontWeight: "700", marginBottom: 2 },
+  displayAge: { fontSize: 13 },
+  displayBio: { fontSize: 13, marginTop: 2 },
+  label: { fontWeight: "700", fontSize: 15, marginBottom: 8 },
+  hobbyInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingLeft: 12,
+    paddingRight: 4,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  hobbyInput: { flex: 1, fontSize: 15, paddingVertical: 8 },
+  addHobbyBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hint: { fontSize: 12, marginBottom: 8, fontStyle: "italic" },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
+  saveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

@@ -1,49 +1,79 @@
 # Hobbily
 
-A community-driven mobile app for teenagers to share posts, explore hobbies, and connect locally — built with Expo and React Native.
+A community-driven mobile app for Palestinian and Israeli teenagers (13–18) to explore hobbies, manage their time, connect with peers who share the same interests, and discover local programs and clubs — built with Expo and React Native.
+
+---
+
+## The Problem
+
+High schoolers from Palestinian and Israeli communities lack time and resources to explore their interests outside school. With few opportunities for personal growth, their creativity and well-being often suffer, limiting their potential.
+
+## Our Solution
+
+An app that helps teens manage their time, communicate with others about shared hobbies, share equipment and knowledge locally, and find geographical guidance to facilities where they can learn or improve their hobby.
 
 ---
 
 ## Features
 
-### Posts
-- Full feed of community posts, newest first
-- Create posts with a title, body, and optional tags — Cancel button discards changes
-- Edit your own posts — shows a `✎ edited` badge on the card and detail view
-- Delete posts with a custom confirmation modal (no accidental deletions)
-- Tap any post to open the full detail view
+### Feed
+- Scrollable community post feed, newest first
+- Create posts with a title, body, and optional tags
+- Edit your own posts — shows a `✎ edited` badge
+- Delete posts with a custom confirmation modal
+- Tap any post to open the full detail view with comments
 
 ### Comments
-- View all comments on a post with author and date
-- Add a comment — persists across app restarts; "Replying as @username" label for context
-- Edit your own comments inline — `✎ edited` badge appears after saving
-- Delete your own comments — soft-deleted (shows "This comment was deleted." placeholder to preserve thread structure)
-- Confirmation modal before deleting
+- View all comments with author and date
+- Add, edit, and soft-delete your own comments
+- Soft-deleted comments show a placeholder to preserve thread structure
 
 ### Likes & Sharing
-- Like any post with a heart icon — one like per account (tap again to unlike)
-- Like count displayed on both the feed card and the full post view
+- Like / unlike any post (one like per account)
 - Share any post via the native system share sheet
+
+### Schedule (Time Management)
+- 7-day scrollable calendar strip with dot indicators for days that have items
+- Add tasks or hobby sessions with title, type, time, and duration
+- Quick-add a 30-min session directly from your profile hobbies
+- Mark items complete with a per-day progress bar
+- **Daily hobby reminder** — a banner shown once per day encouraging 5–10 min of hobby practice
+- Toggle the daily reminder on/off with a switch
+
+### Community
+- 10 predefined hobby channels: Photography, Music, Sports, Coding, Drawing & Art, Cooking, Gaming, Reading, Dance, Film & Video
+- Search channels and filter between "All" and "My Channels"
+- Channel suggestions based on your profile hobbies
+- Join / leave channels; send and delete messages
+- Realistic seed messages pre-populate channels for a better first-run experience
+- Keyboard-avoiding input bar — the chat input stays above the keyboard on both iOS and Android
+
+### Opportunities (Explore)
+- Browse 12 real programs and clubs for teens in Israel and Palestine
+- Search by hobby, location, organisation name, or category
+- Filter by category (Sports, Music, Art, Coding, Cooking, etc.)
+- Tap any card for full details: highlights, location, age range, cost, and direct contact / registration links
 
 ### Profile
 - Edit username, age (validated 13–150), and bio
-- Manage hobby tags with a two-press delete system:
-  - First tap turns a tag red
-  - Second tap removes it; tapping elsewhere cancels the pending delete
-- All changes confirmed with a modal before saving to on-device storage
+- Manage hobby tags with a two-press delete system
+- Avatar card showing your initial, name, and bio
+- Light/dark mode toggle (sun/moon icon button)
+- All changes confirmed with a modal before saving
 
 ### Weather
 - Current conditions with temperature and description
 - 3-day forecast
 - City search with autocomplete
-- Last selected city remembered across sessions
+- Last selected city persisted across sessions
 
 ### UI / UX
-- Swipe left/right between Feed and Profile tabs with a smooth slide animation
-- Custom `ConfirmModal` component — themed, animated, replaces all system alerts
-- Light and dark mode (follows system preference; toggle in Profile)
-- Safe area handling — no content hidden behind notches or status bars
-- Keyboard-avoiding reply box on the comments screen
+- **Hobbily colour palette:** coral `#fc7273`, lavender `#cacef2`, navy `#032068`, black `#000000`
+- Swipe left/right between all 5 tabs with a smooth slide animation
+- Tab bar respects Android navigation bar and iPhone home indicator (no collision with system buttons)
+- Custom `ConfirmModal` — themed, replaces all system alerts
+- Light and dark mode, follows system preference or toggled manually
+- Safe area handling throughout — no content hidden behind notches or status bars
 
 ---
 
@@ -56,7 +86,7 @@ A community-driven mobile app for teenagers to share posts, explore hobbies, and
 | Routing | [Expo Router](https://expo.github.io/router/) v6 (file-based) |
 | State | React Context API + `useState` / `useEffect` |
 | Persistence | [`@react-native-async-storage/async-storage`](https://react-native-async-storage.github.io/async-storage/) |
-| Animation | React Native `Animated` API + `PanResponder` (no extra packages) |
+| Animation | React Native `Animated` API + `PanResponder` |
 | Weather API | [OpenWeatherMap](https://openweathermap.org/api) |
 | Icons | `@expo/vector-icons` (Ionicons) |
 | Future backend | [Appwrite](https://appwrite.io) (planned for Phase 2) |
@@ -67,39 +97,44 @@ A community-driven mobile app for teenagers to share posts, explore hobbies, and
 
 ```
 app/
-├── _layout.tsx              # Root layout — mounts ThemeProvider, ProfileProvider, PostsProvider
-├── create-post.tsx          # Create post screen (Cancel + Create buttons)
-├── edit-post/
-│   └── [id].tsx             # Edit post screen (pre-filled; Cancel + Save buttons)
-├── post/
-│   └── [id].tsx             # Post detail + comments screen (likes, share, edit/delete comments)
+├── _layout.tsx              # Root layout — ThemeProvider, ProfileProvider, PostsProvider, TimeProvider, CommunityProvider
+├── create-post.tsx          # Create post screen
+├── edit-post/[id].tsx       # Edit post screen
+├── post/[id].tsx            # Post detail + comments screen
 └── (tabs)/
-    ├── _layout.tsx          # Bottom tab bar configuration
-    ├── index.tsx            # Home feed + weather widget (swipe left → Profile)
-    └── profile.tsx          # Profile editor + dark mode toggle (swipe right → Feed)
+    ├── _layout.tsx          # Bottom tab bar (5 tabs, safe-area-aware height)
+    ├── index.tsx            # Feed + weather (tab 0)
+    ├── time-manager.tsx     # Schedule / time management (tab 1)
+    ├── community.tsx        # Hobby channels + chat (tab 2)
+    ├── opportunities.tsx    # Programs & clubs explorer (tab 3)
+    └── profile.tsx          # Profile editor + dark mode toggle (tab 4)
 
 components/
-├── PostCard.tsx             # Feed card — edit/delete, like count, share button
+├── SwipeableTab.tsx         # Reusable swipe-to-navigate wrapper for all tab screens
+├── PostCard.tsx             # Feed card — edit/delete, like, share
 ├── TagChip.tsx              # Tag pill (supports two-press delete)
-├── ConfirmModal.tsx         # Themed confirmation/error modal (replaces Alert)
+├── ConfirmModal.tsx         # Themed confirmation/error modal
 ├── WeatherBox.tsx           # Weather widget with forecast and city search
 ├── InputField.tsx           # Labelled text input
-├── PrimaryButton.tsx        # Primary action button
-└── InfoBox.tsx              # Generic key/value display
+└── PrimaryButton.tsx        # Primary action button
 
 context/
-├── ThemeContext.tsx          # Light/dark color tokens + toggle
-├── ProfileContext.tsx        # User profile state (loaded from storage)
-└── PostsContext.tsx          # Posts state + CRUD (create, edit, delete, like, comments)
+├── ThemeContext.tsx          # Hobbily colour tokens + light/dark toggle
+├── ProfileContext.tsx        # User profile state
+├── PostsContext.tsx          # Posts + comments + likes state
+├── TimeContext.tsx           # Tasks, hobby sessions, daily reminder state
+└── CommunityContext.tsx      # Channels, messages, joined channels state
 
 services/
-├── postsService.ts          # AsyncStorage CRUD — posts, comments (edit/soft-delete), likes
+├── postsService.ts          # AsyncStorage CRUD — posts, comments, likes
 ├── profileService.ts        # AsyncStorage load/save for profile
 └── weatherService.ts        # OpenWeatherMap API calls
 
 types/
-├── Post.ts                  # Post type (includes likes[]) and Comment type (editedAt, deletedAt)
-└── Profile.ts               # Profile type definition
+├── Post.ts                  # Post and Comment types
+├── Profile.ts               # Profile type
+├── Task.ts                  # Task / hobby session type
+└── CommunityMessage.ts      # Channel and CommunityMessage types
 ```
 
 ---
@@ -133,7 +168,6 @@ EXPO_PUBLIC_WEATHER_API_KEY=your_openweathermap_api_key_here
 ```
 
 > A free key can be obtained at [openweathermap.org](https://openweathermap.org/api).
-> The app includes a fallback key for local development so it works without `.env`.
 
 ### Running the App
 
@@ -150,11 +184,11 @@ Scan the QR code with Expo Go, or press `a` for Android emulator / `i` for iOS s
 **Data flow:**
 `AsyncStorage` ← `services/` ← `context/` ← screens & components
 
-- Services handle all storage I/O in one place — swapping to Appwrite later only requires changing service files.
-- Contexts provide optimistic in-memory state so the UI responds instantly without waiting for storage.
-- Provider nesting order: `ThemeProvider` → `ProfileProvider` → `PostsProvider` (posts need the current username from profile).
-- Comments are soft-deleted (a `deletedAt` timestamp is set) rather than removed, so thread structure is preserved.
-- Likes are stored as `string[]` (array of usernames) on each post — one like per user, enforced in the service layer.
+- Services handle all storage I/O — swapping to a backend (Appwrite) only requires replacing service files.
+- Contexts provide optimistic in-memory state so the UI responds instantly.
+- Provider nesting: `ThemeProvider` → `ProfileProvider` → `PostsProvider` → `TimeProvider` → `CommunityProvider`.
+- Comments are soft-deleted (a `deletedAt` timestamp is set) to preserve thread structure.
+- The `SwipeableTab` component wraps every tab screen; it reads `tabIndex` to know which tabs are adjacent, captures horizontal gestures (ignoring vertical scrolls), animates a slide, then calls `router.navigate()`.
 
 ---
 
@@ -163,22 +197,27 @@ Scan the QR code with Expo Go, or press `a` for Android emulator / `i` for iOS s
 ### Phase 2 — Backend & Auth (Planned)
 - [ ] Appwrite integration (replace AsyncStorage services)
 - [ ] User authentication (sign up / log in)
-- [ ] Cloud-synced posts, comments, and profiles
+- [ ] Cloud-synced posts, comments, profiles, and community messages
 - [ ] HuggingFace AI — auto-tagging, content moderation
 
 ### Phase 3 — Social Features (Future)
 - [ ] Post search and filtering
 - [ ] Direct messaging
-- [ ] Region-based communities
-- [ ] Push notifications
+- [ ] Push notifications for daily reminders and community activity
 - [ ] Moderation tools
+- [ ] Map view for opportunities (show nearby clubs/programs)
 
 ### Completed
 - [x] Like / reaction system (heart icon, per-user, persisted)
 - [x] Comment editing and soft-deletion
 - [x] Native share sheet integration
-- [x] Swipe navigation between tabs with slide animation
+- [x] Swipe navigation across all 5 tabs with slide animation
 - [x] Custom themed confirmation modals
+- [x] Schedule / time management with daily hobby reminder
+- [x] Community hobby channels with local messaging
+- [x] Opportunities explorer (12 real Israeli/Palestinian programs)
+- [x] Hobbily brand colour palette
+- [x] Android navigation bar safe-area fix for tab bar
 
 ---
 

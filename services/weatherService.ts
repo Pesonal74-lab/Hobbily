@@ -12,7 +12,7 @@
  *   /data/2.5/forecast — 5-day / 3-hour forecast (filtered to 3 days)
  *   /geo/1.0/direct    — city name autocomplete (up to 5 results)
  */
-const API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY ?? "148c03093249a703dc32357520ece4a7";
+const API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY ?? "";
 
 /**
  * Fetches current weather conditions for a given city name.

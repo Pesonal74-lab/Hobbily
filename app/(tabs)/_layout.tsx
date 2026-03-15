@@ -1,24 +1,50 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Base tab bar height (icons + labels) + device bottom inset (Android nav bar / iPhone home indicator)
+  const TAB_HEIGHT = 56 + insets.bottom;
 
   return (
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.secondaryText,
-        tabBarStyle: { backgroundColor: colors.card },
+        tabBarActiveTintColor: colors.tabBarActive,
+        tabBarInactiveTintColor: colors.tabBarInactive,
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: TAB_HEIGHT,
+          paddingBottom: insets.bottom + 6,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "600",
+        },
         tabBarIcon: ({ color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = "home";
-          if (route.name === "profile") iconName = "person";
-          else if (route.name === "index") iconName = "list";
-          return <Ionicons name={iconName} size={size} color={color} />;
+          const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
+            index: "home-outline",
+            "time-manager": "time-outline",
+            community: "chatbubbles-outline",
+            opportunities: "compass-outline",
+            profile: "person-outline",
+          };
+          const icon = iconMap[route.name] ?? "ellipse-outline";
+          return <Ionicons name={icon} size={size} color={color} />;
         },
       })}
-    />
+    >
+      <Tabs.Screen name="index" options={{ title: "Feed" }} />
+      <Tabs.Screen name="time-manager" options={{ title: "Schedule" }} />
+      <Tabs.Screen name="community" options={{ title: "Community" }} />
+      <Tabs.Screen name="opportunities" options={{ title: "Explore" }} />
+      <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+    </Tabs>
   );
 }
