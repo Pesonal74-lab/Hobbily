@@ -7,6 +7,7 @@ import { TimeProvider } from "../context/TimeContext";
 import { CommunityProvider } from "../context/CommunityContext";
 import { ProgressProvider } from "../context/ProgressContext";
 import { Image, Animated, StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useEffect, useRef, useState } from "react";
 
 function AppShell() {
@@ -42,6 +43,15 @@ function AppShell() {
     }
   }, [user]);
 
+  // Redirect to tabs when a user signs in from the onboarding screen after the splash
+  // has already completed (e.g. signed out then signed back in).
+  useEffect(() => {
+    if (!redirected.current) return; // splash not done yet — initial effect handles this
+    if (user && isLoaded && profile.hasOnboarded) {
+      router.replace("/(tabs)/" as any);
+    }
+  }, [user, isLoaded, profile.hasOnboarded]);
+
   return (
     <>
       <Stack screenOptions={{ headerShown: false }} />
@@ -59,21 +69,23 @@ function AppShell() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <ProfileProvider>
-          <PostsProvider>
-            <TimeProvider>
-              <CommunityProvider>
-                <ProgressProvider>
-                  <AppShell />
-                </ProgressProvider>
-              </CommunityProvider>
-            </TimeProvider>
-          </PostsProvider>
-        </ProfileProvider>
-      </ThemeProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <ThemeProvider>
+          <ProfileProvider>
+            <PostsProvider>
+              <TimeProvider>
+                <CommunityProvider>
+                  <ProgressProvider>
+                    <AppShell />
+                  </ProgressProvider>
+                </CommunityProvider>
+              </TimeProvider>
+            </PostsProvider>
+          </ProfileProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -455,7 +455,7 @@ function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
                   { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border },
                 ]}
               >
-                <Ionicons name={h.icon} size={26} color={active ? "#fff" : colors.secondaryText} />
+                <Ionicons name={h.icon} size={34} color={active ? "#fff" : colors.secondaryText} />
                 <Text style={[styles.hobbyTileText, { color: active ? "#fff" : colors.text }]} numberOfLines={2}>
                   {h.label}
                 </Text>
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 6,
   },
-  hobbyTileText: { fontSize: 11, fontWeight: "600", textAlign: "center", lineHeight: 15 },
+  hobbyTileText: { fontSize: 13, fontWeight: "600", textAlign: "center", lineHeight: 17 },
   // Free time
   freeTimeOptions: { gap: 10, marginBottom: 24 },
   freeTimeCard: {

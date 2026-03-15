@@ -93,7 +93,7 @@ export default function PostCard({ post, colors, onEdit, onDelete }: Props) {
           {/* Read-only tag chips */}
           <View style={styles.tagRow}>
             {post.tags.map((tag) => (
-              <TagChip key={tag} label={tag} textColor={colors.text} />
+              <TagChip key={tag} label={tag} textColor="#fff" backgroundColor={colors.primary} />
             ))}
           </View>
 

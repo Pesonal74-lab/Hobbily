@@ -106,8 +106,9 @@ An app that helps teens manage their time, communicate with others about shared 
 | Database | [Cloud Firestore](https://firebase.google.com/products/firestore) (real-time) |
 | Local storage | [`@react-native-async-storage/async-storage`](https://react-native-async-storage.github.io/async-storage/) (tips, tasks, channel prefs) |
 | State | React Context API + `useState` / `useEffect` |
-| Animation | React Native `Animated` API + `PanResponder` |
-| Weather API | [OpenWeatherMap](https://openweathermap.org/api) |
+| Gestures | [`react-native-gesture-handler`](https://docs.swmansion.com/react-native-gesture-handler/) v2 |
+| Animation | [`react-native-reanimated`](https://docs.swmansion.com/react-native-reanimated/) v4 |
+| Weather API | [wttr.in](https://wttr.in) (free, no API key required) |
 | Icons | `@expo/vector-icons` (Ionicons) |
 
 ---
@@ -182,21 +183,6 @@ npm install
 npx expo install firebase @react-native-async-storage/async-storage
 ```
 
-### Environment Variables
-
-Copy the example file and add your API key:
-
-```bash
-cp .env.example .env
-```
-
-```env
-# .env
-EXPO_PUBLIC_WEATHER_API_KEY=your_openweathermap_api_key_here
-```
-
-> A free key can be obtained at [openweathermap.org](https://openweathermap.org/api).
-
 ### Running the App
 
 ```bash
@@ -217,9 +203,9 @@ Scan the QR code with Expo Go, or press `a` for Android emulator.
 - **AsyncStorage** stores local-only preferences: tasks, joined channel list, and dismissed tip keys.
 - Provider order: `AuthProvider → ThemeProvider → ProfileProvider → PostsProvider → TimeProvider → CommunityProvider → ProgressProvider`.
 - Comments are soft-deleted (a `deletedAt` timestamp is set) to preserve thread structure.
-- The `SwipeableTab` component wraps every tab screen; it reads `tabIndex` to know which tabs are adjacent, captures horizontal gestures (ignoring vertical scrolls), animates a slide, then calls `router.navigate()`.
+- The `SwipeableTab` component wraps every tab screen; it uses `react-native-gesture-handler`'s `GestureDetector` with `failOffsetY` so the gesture fails immediately if the user moves vertically first — vertical `ScrollView`s inside tabs are never blocked. Snap-back uses `withTiming` (no spring bounce).
 - The splash screen fades out only once `isAuthLoaded && isLoaded && !isLoading` — preventing any flash of wrong content.
-- `deleteAccount()` removes Firestore documents first (`users/{uid}`, `progress/{uid}`), then calls Firebase `deleteUser()` — the resulting auth state change redirects automatically to onboarding.
+- `deleteAccount()` performs a full 7-step wipe: re-authenticate → delete all user posts → delete all community messages across every channel → clear AsyncStorage → delete `users/{uid}` + `progress/{uid}` documents → delete the Firebase Auth user. The resulting auth state change redirects to onboarding automatically.
 
 ---
 
@@ -245,7 +231,8 @@ Scan the QR code with Expo Go, or press `a` for Android emulator.
 - [x] Like / reaction system (heart icon, per-user, persisted)
 - [x] Comment editing and soft-deletion
 - [x] Native share sheet integration
-- [x] Swipe navigation across all 5 tabs with slide animation
+- [x] Swipe navigation across all 5 tabs — bounce-free, vertical scroll safe (RNGH + Reanimated)
+- [x] Live weather card on Home — current conditions + tap-to-expand 3-day forecast (wttr.in, no key)
 - [x] Custom themed confirmation modals
 - [x] Schedule / time management with daily hobby reminder
 - [x] Community hobby channels with real-time messaging

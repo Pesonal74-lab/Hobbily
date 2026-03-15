@@ -1,17 +1,23 @@
 /**
- * SwipeableTab
- * Wraps a tab screen and adds horizontal swipe-to-navigate between tabs.
+ * SwipeableTab — horizontal swipe navigation between tabs.
  *
- * Swipe left  → next tab  (higher index)
- * Swipe right → previous tab (lower index)
+ * Uses react-native-gesture-handler (Pan) + react-native-reanimated.
  *
- * The gesture is only captured when clearly horizontal (dx dominant over dy),
- * so vertical scrolls in child ScrollViews are unaffected.
- * useFocusEffect resets translateX to 0 each time the tab comes into focus,
- * preventing stale transforms after back-navigation.
+ * Fixes vs the old PanResponder implementation:
+ *   - failOffsetY: if the user moves vertically first the gesture fails
+ *     immediately, so vertical ScrollViews are never blocked (up/down bug gone)
+ *   - activeOffsetX: gesture only activates after a clear horizontal move
+ *   - No bounce: snap-back is withTiming (ease-out), not a spring
  */
-import { View, Animated, PanResponder, Dimensions } from "react-native";
-import { useRef, useCallback } from "react";
+import { View, Dimensions } from "react-native";
+import { useCallback } from "react";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
+} from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 
 const TABS = [
@@ -28,83 +34,78 @@ const SWIPE_THRESHOLD = 60;
 type Props = {
   /** Index of this tab in the TABS array (0 = Feed … 4 = Profile) */
   tabIndex: number;
-  /** Background colour of this screen — keeps the sliding view opaque */
+  /** Background colour keeps the sliding view opaque during transition */
   backgroundColor: string;
   children: React.ReactNode;
 };
 
 export default function SwipeableTab({ tabIndex, backgroundColor, children }: Props) {
-  const translateX = useRef(new Animated.Value(0)).current;
+  const translateX = useSharedValue(0);
   const hasPrev = tabIndex > 0;
   const hasNext = tabIndex < TABS.length - 1;
 
   // Reset position every time this tab gains focus
   useFocusEffect(
     useCallback(() => {
-      translateX.setValue(0);
+      translateX.value = 0;
     }, [translateX])
   );
 
-  function snapBack() {
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 8,
-    }).start();
+  function navigateTo(index: number) {
+    router.navigate(TABS[index]);
   }
 
-  const pan = useRef(
-    PanResponder.create({
-      // Only start when clearly horizontal — use non-capture so child ScrollViews
-      // and tappable elements get first opportunity to handle the gesture.
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 25 && Math.abs(g.dy) < Math.abs(g.dx) * 0.4,
-
-      onPanResponderMove: (_, g) => {
-        // Extra guard: only translate when horizontal movement is strictly dominant
-        if (Math.abs(g.dx) <= Math.abs(g.dy)) return;
-        if (g.dx < 0 && hasNext) translateX.setValue(g.dx);
-        if (g.dx > 0 && hasPrev) translateX.setValue(g.dx);
-      },
-
-      onPanResponderRelease: (_, g) => {
-        if (g.dx < -SWIPE_THRESHOLD && hasNext && Math.abs(g.dy) < 120) {
-          // Swipe left → next tab
-          Animated.timing(translateX, {
-            toValue: -SCREEN_WIDTH,
-            duration: 180,
-            useNativeDriver: true,
-          }).start(() => {
-            router.navigate(TABS[tabIndex + 1]);
-            translateX.setValue(0);
-          });
-        } else if (g.dx > SWIPE_THRESHOLD && hasPrev && Math.abs(g.dy) < 120) {
-          // Swipe right → previous tab
-          Animated.timing(translateX, {
-            toValue: SCREEN_WIDTH,
-            duration: 180,
-            useNativeDriver: true,
-          }).start(() => {
-            router.navigate(TABS[tabIndex - 1]);
-            translateX.setValue(0);
-          });
-        } else {
-          snapBack();
-        }
-      },
-
-      onPanResponderTerminate: () => snapBack(),
+  const pan = Gesture.Pan()
+    // Only activate after a clear horizontal move …
+    .activeOffsetX([-20, 20])
+    // … and immediately fail if the user moves vertically first.
+    // This hands control back to child ScrollViews for up/down scrolling.
+    .failOffsetY([-15, 15])
+    // Run callbacks on the JS thread so we can read hasPrev/hasNext directly.
+    .runOnJS(true)
+    .onUpdate((e) => {
+      if (e.translationX < 0 && hasNext) {
+        translateX.value = e.translationX;
+      } else if (e.translationX > 0 && hasPrev) {
+        translateX.value = e.translationX;
+      }
     })
-  ).current;
+    .onEnd((e) => {
+      if (e.translationX < -SWIPE_THRESHOLD && hasNext) {
+        // Commit: slide off to the left then navigate
+        translateX.value = withTiming(-SCREEN_WIDTH, { duration: 200 }, (finished) => {
+          "worklet";
+          if (finished) {
+            runOnJS(navigateTo)(tabIndex + 1);
+            translateX.value = 0;
+          }
+        });
+      } else if (e.translationX > SWIPE_THRESHOLD && hasPrev) {
+        // Commit: slide off to the right then navigate
+        translateX.value = withTiming(SCREEN_WIDTH, { duration: 200 }, (finished) => {
+          "worklet";
+          if (finished) {
+            runOnJS(navigateTo)(tabIndex - 1);
+            translateX.value = 0;
+          }
+        });
+      } else {
+        // Snap back — ease-out, no bounce
+        translateX.value = withTiming(0, { duration: 250 });
+      }
+    });
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
   return (
-    <View style={{ flex: 1, backgroundColor }}>
-      <Animated.View
-        style={{ flex: 1, backgroundColor, transform: [{ translateX }] }}
-        {...pan.panHandlers}
-      >
-        {children}
-      </Animated.View>
+    <View style={{ flex: 1, backgroundColor, overflow: "hidden" }}>
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[{ flex: 1, backgroundColor }, animStyle]}>
+          {children}
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }

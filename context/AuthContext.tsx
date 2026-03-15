@@ -9,8 +9,17 @@ import {
   EmailAuthProvider,
   onAuthStateChanged,
 } from "firebase/auth";
-import { doc, deleteDoc } from "firebase/firestore";
+import {
+  doc, deleteDoc, getDoc, getDocs, collection, query, where,
+} from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { auth, db } from "../lib/firebase";
+
+/** All community channel IDs — mirrors DEFAULT_CHANNELS in CommunityContext */
+const COMMUNITY_CHANNEL_IDS = [
+  "photography", "music", "drawing", "coding", "sports",
+  "cooking", "gaming", "reading", "dance", "film",
+];
 
 type AuthContextType = {
   user: User | null;
@@ -51,15 +60,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function deleteAccount(password: string) {
     if (!user || !user.email) return;
-    // Re-authenticate so Firebase accepts the deleteUser call
+
+    // Step 1: Re-authenticate so Firebase accepts the deleteUser call
     const credential = EmailAuthProvider.credential(user.email, password);
     await reauthenticateWithCredential(user, credential);
-    // Delete Firestore data first
+
+    // Step 2: Read profile to resolve username (used as author key in posts/messages)
+    const profileSnap = await getDoc(doc(db, "users", user.uid));
+    const username: string | undefined = profileSnap.data()?.username;
+
+    if (username) {
+      // Step 3: Delete all posts authored by this user
+      const postsSnap = await getDocs(
+        query(collection(db, "posts"), where("username", "==", username))
+      );
+      await Promise.allSettled(postsSnap.docs.map((d) => deleteDoc(d.ref)));
+
+      // Step 4: Delete all community messages authored by this user
+      await Promise.allSettled(
+        COMMUNITY_CHANNEL_IDS.map(async (channelId) => {
+          const msgsSnap = await getDocs(
+            query(
+              collection(db, "channels", channelId, "messages"),
+              where("author", "==", username)
+            )
+          );
+          return Promise.allSettled(msgsSnap.docs.map((d) => deleteDoc(d.ref)));
+        })
+      );
+    }
+
+    // Step 5: Clear all local AsyncStorage data for this device
+    await AsyncStorage.multiRemove([
+      "@hobbily_tasks",
+      "@hobbily_daily_reminder",
+      "@hobbily_reminder_shown_date",
+      "@hobbily_joined_channels",
+      "@hobbily_tip_feed_first_post",
+      "@hobbily_tip_community_channels",
+      "@hobbily_tip_time_session",
+    ]);
+
+    // Step 6: Delete Firestore profile + progress docs
     await Promise.allSettled([
       deleteDoc(doc(db, "users", user.uid)),
       deleteDoc(doc(db, "progress", user.uid)),
     ]);
-    // Use auth.currentUser — the state ref may be stale after re-auth
+
+    // Step 7: Delete the Firebase Auth user (use currentUser — state ref may be stale)
     const freshUser = auth.currentUser;
     if (freshUser) await deleteUser(freshUser);
   }

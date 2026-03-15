@@ -100,15 +100,15 @@ export default function EditPost() {
           placeholderTextColor={colors.secondaryText}
         />
 
-        {/* ── Tags ─────────────────────────────────────────── */}
-        <Text style={[styles.label, { color: colors.text }]}>Tags</Text>
+        {/* ── Hobbies ──────────────────────────────────────── */}
+        <Text style={[styles.label, { color: colors.text }]}>Hobbies</Text>
 
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
           <TextInput
             style={[styles.input, { flex: 1, marginBottom: 0, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
             value={newTag}
             onChangeText={setNewTag}
-            placeholder="Add a tag"
+            placeholder="Add a hobby"
             placeholderTextColor={colors.secondaryText}
             onSubmitEditing={addTag}
           />
@@ -122,7 +122,7 @@ export default function EditPost() {
 
         {/* Hint for the two-press delete interaction */}
         <Text style={[styles.hint, { color: colors.secondaryText }]}>
-          Tap a tag once to select it for deletion, tap again to confirm.
+          Tap a hobby once to select it for deletion, tap again to confirm.
         </Text>
 
         {/* Active tag chips — red = pending delete */}
@@ -131,7 +131,8 @@ export default function EditPost() {
             <TagChip
               key={tag}
               label={tag}
-              textColor={colors.text}
+              textColor="#fff"
+              backgroundColor={colors.primary}
               isPendingDelete={pendingTag === tag}
               onPress={() => handleTagPress(tag)}
             />

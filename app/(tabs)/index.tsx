@@ -3,7 +3,7 @@
  * Greeting, streak card, today's tasks, suggested opportunities, quick actions.
  */
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +14,7 @@ import { useTime } from "../../context/TimeContext";
 import { useProgress } from "../../context/ProgressContext";
 import SwipeableTab from "../../components/SwipeableTab";
 import TipBanner, { TIP_KEYS } from "../../components/TipBanner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +45,156 @@ const QUICK_OPPS = [
 ];
 
 const COST_COLORS: Record<string, string> = { Free: "#10B981", Subsidised: "#2563EB", Paid: "#8B5CF6" };
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+
+type ForecastDay = {
+  date: string;
+  maxC: string;
+  minC: string;
+  desc: string;
+};
+
+type WeatherData = {
+  tempC: string;
+  feelsLikeC: string;
+  desc: string;
+  humidity: string;
+  forecast: ForecastDay[];
+};
+
+function weatherIcon(desc: string): any {
+  const d = desc.toLowerCase();
+  if (d.includes("thunder") || d.includes("storm")) return "thunderstorm-outline";
+  if (d.includes("snow") || d.includes("blizzard")) return "snow-outline";
+  if (d.includes("rain") || d.includes("drizzle") || d.includes("shower")) return "rainy-outline";
+  if (d.includes("fog") || d.includes("mist") || d.includes("haze")) return "partly-sunny-outline";
+  if (d.includes("cloud") || d.includes("overcast")) return "cloudy-outline";
+  if (d.includes("sunny") || d.includes("clear")) return "sunny-outline";
+  return "cloud-outline";
+}
+
+function forecastLabel(dateStr: string, index: number): string {
+  if (index === 0) return "Today";
+  if (index === 1) return "Tomorrow";
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const d = new Date(dateStr + "T00:00:00");
+  return days[d.getDay()];
+}
+
+function useWeather(city: string) {
+  const [data, setData] = useState<WeatherData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!city) return;
+    setLoading(true);
+    setError(false);
+    fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`)
+      .then((r) => r.json())
+      .then((json) => {
+        const cur = json.current_condition?.[0];
+        if (!cur) { setError(true); return; }
+        const forecast: ForecastDay[] = (json.weather ?? []).map((day: any) => ({
+          date: day.date,
+          maxC: day.maxtempC,
+          minC: day.mintempC,
+          // noon slot (index 4 in 3-hour intervals) gives the day's dominant condition
+          desc: day.hourly?.[4]?.weatherDesc?.[0]?.value ?? day.hourly?.[0]?.weatherDesc?.[0]?.value ?? "Unknown",
+        }));
+        setData({
+          tempC: cur.temp_C,
+          feelsLikeC: cur.FeelsLikeC,
+          desc: cur.weatherDesc?.[0]?.value ?? "Unknown",
+          humidity: cur.humidity,
+          forecast,
+        });
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [city]);
+
+  return { data, loading, error };
+}
+
+function WeatherCard({ city, colors }: { city: string; colors: any }) {
+  const { data, loading, error } = useWeather(city);
+  const [expanded, setExpanded] = useState(false);
+  if (!city) return null;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => data && setExpanded((v) => !v)}
+      style={[styles.weatherCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
+      {loading ? (
+        <View style={styles.weatherRow}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.weatherMeta, { color: colors.secondaryText }]}>Fetching weather…</Text>
+        </View>
+      ) : error || !data ? (
+        <View style={styles.weatherRow}>
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.secondaryText} />
+          <Text style={[styles.weatherMeta, { color: colors.secondaryText }]}>Weather unavailable</Text>
+        </View>
+      ) : (
+        <>
+          {/* ── Current conditions ── */}
+          <View style={styles.weatherRow}>
+            <Ionicons name={weatherIcon(data.desc)} size={40} color={colors.primary} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.weatherCity, { color: colors.secondaryText }]}>{city}</Text>
+              <Text style={[styles.weatherDesc, { color: colors.text }]}>{data.desc}</Text>
+              <Text style={[styles.weatherMeta, { color: colors.secondaryText }]}>
+                Humidity {data.humidity}%
+              </Text>
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={[styles.weatherTemp, { color: colors.text }]}>{data.tempC}°C</Text>
+              <Text style={[styles.weatherMeta, { color: colors.secondaryText }]}>
+                Feels {data.feelsLikeC}°
+              </Text>
+            </View>
+            <Ionicons
+              name={expanded ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={colors.secondaryText}
+              style={{ marginLeft: 8, alignSelf: "center" }}
+            />
+          </View>
+
+          {/* ── 3-day forecast ── */}
+          {expanded && data.forecast.length > 0 && (
+            <>
+              <View style={[styles.weatherDivider, { backgroundColor: colors.border }]} />
+              {data.forecast.map((day, i) => (
+                <View key={day.date} style={styles.forecastRow}>
+                  <Text style={[styles.forecastDay, { color: colors.text }]}>
+                    {forecastLabel(day.date, i)}
+                  </Text>
+                  <Ionicons
+                    name={weatherIcon(day.desc)}
+                    size={18}
+                    color={colors.primary}
+                    style={{ marginHorizontal: 8 }}
+                  />
+                  <Text style={[styles.forecastDesc, { color: colors.secondaryText }]} numberOfLines={1}>
+                    {day.desc}
+                  </Text>
+                  <Text style={[styles.forecastRange, { color: colors.text }]}>
+                    {day.maxC}° / {day.minC}°
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -148,6 +298,9 @@ export default function HomeScreen() {
             icon="create-outline"
             colors={colors}
           />
+
+          {/* Weather */}
+          <WeatherCard city={profile.city} colors={colors} />
 
           {/* Streak card */}
           <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
@@ -340,6 +493,24 @@ const styles = StyleSheet.create({
   // Hobbies
   hobbyChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   hobbyChipText: { fontSize: 13, fontWeight: "600" },
+  // Weather
+  weatherCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  weatherRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  weatherCity: { fontSize: 12, marginBottom: 1 },
+  weatherDesc: { fontSize: 15, fontWeight: "700" },
+  weatherMeta: { fontSize: 12, marginTop: 2 },
+  weatherTemp: { fontSize: 30, fontWeight: "900" },
+  weatherDivider: { height: 1, marginTop: 12, marginBottom: 8 },
+  forecastRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6 },
+  forecastDay: { width: 76, fontSize: 13, fontWeight: "700" },
+  forecastDesc: { flex: 1, fontSize: 12 },
+  forecastRange: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
   // Notification modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
   notifModal: { width: 280, padding: 24, borderRadius: 20, borderWidth: 1, alignItems: "center" },
