@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "teen-hub",
-    "slug": "teen-hub",
+    "name": "Hobbily",
+    "slug": "hobbily",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "teenhub",
+    "scheme": "hobbily",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
