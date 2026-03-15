@@ -1,7 +1,7 @@
 /**
  * Create Post screen
  * Lets the user write a new post with a title, body, and optional tags.
- * On submit the post is persisted via PostsContext (AsyncStorage) and the
+ * On submit the post is persisted via PostsContext (Firestore) and the
  * screen navigates back to the feed.
  *
  * Two-press tag deletion:

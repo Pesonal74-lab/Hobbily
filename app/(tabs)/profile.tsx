@@ -134,25 +134,40 @@ function DeleteAccountModal({
 }: {
   visible: boolean;
   onCancel: () => void;
-  onConfirm: () => Promise<void>;
+  onConfirm: (password: string) => Promise<void>;
   colors: any;
 }) {
   const [checked, setChecked] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const canDelete = checked && confirmText.trim() === "DELETE";
+  const canDelete = checked && confirmText.trim() === "DELETE" && password.length > 0;
 
   async function handleDelete() {
     setLoading(true);
-    await onConfirm();
-    setLoading(false);
+    setError("");
+    try {
+      await onConfirm(password);
+      // On success the user is redirected away — no need to close manually
+    } catch (e: any) {
+      setLoading(false);
+      if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") {
+        setError("Incorrect password. Please try again.");
+      } else if (e.code === "auth/too-many-requests") {
+        setError("Too many attempts. Please wait a moment and try again.");
+      } else {
+        setError("Failed to delete account. Please try again.");
+      }
+    }
   }
 
-  // Reset state whenever modal opens
   function handleCancel() {
     setChecked(false);
     setConfirmText("");
+    setPassword("");
+    setError("");
     onCancel();
   }
 
@@ -188,6 +203,24 @@ function DeleteAccountModal({
             placeholder="DELETE"
             placeholderTextColor={colors.secondaryText}
           />
+
+          {/* Step 3: password */}
+          <Text style={[styles.deleteHint, { color: colors.secondaryText }]}>
+            Enter your password:
+          </Text>
+          <TextInput
+            style={[styles.deleteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground, letterSpacing: 0 }]}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            placeholder="Your password"
+            placeholderTextColor={colors.secondaryText}
+          />
+
+          {error ? (
+            <Text style={{ color: "#ef4444", fontSize: 13, textAlign: "center" }}>{error}</Text>
+          ) : null}
 
           <View style={styles.deleteActions}>
             <TouchableOpacity
@@ -614,9 +647,9 @@ export default function ProfileScreen() {
       <DeleteAccountModal
         visible={deleteModalVisible}
         onCancel={() => setDeleteModalVisible(false)}
-        onConfirm={async () => {
-          setDeleteModalVisible(false);
-          await deleteAccount();
+        onConfirm={async (password: string) => {
+          await deleteAccount(password);
+          // On success, auth state change redirects to onboarding automatically
         }}
         colors={colors}
       />

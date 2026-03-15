@@ -28,13 +28,19 @@ function AppShell() {
       if (!redirected.current) {
         redirected.current = true;
         if (!user || !profile.hasOnboarded) {
-          // Not logged in OR logged in but hasn't finished onboarding
           router.replace("/onboarding" as any);
         }
-        // else: authenticated + onboarded → default route (tabs) renders automatically
       }
     });
   }, [allReady]);
+
+  // Redirect to onboarding when user signs out or deletes their account after initial load
+  useEffect(() => {
+    if (!redirected.current) return; // splash not done yet — initial effect handles this
+    if (!user) {
+      router.replace("/onboarding" as any);
+    }
+  }, [user]);
 
   return (
     <>

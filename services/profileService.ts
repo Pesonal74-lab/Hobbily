@@ -1,3 +1,9 @@
+/**
+ * profileService
+ * Firestore CRUD for user profile documents stored at users/{uid}.
+ * loadProfile merges fetched data over DEFAULT_PROFILE so all fields are
+ * always present even for older accounts that predate new fields.
+ */
 import { db } from "../lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { Profile } from "../types/Profile";

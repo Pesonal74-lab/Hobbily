@@ -61,9 +61,18 @@ export function CommunityProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Subscribe to Firestore messages for all joined channels whenever they change
+  // Subscribe to Firestore messages for all joined channels whenever they change.
+  // When user signs out, tear down all active listeners to prevent memory leaks
+  // and stop cross-user data arriving in state.
   useEffect(() => {
-    if (isLoading || !user) return;
+    if (isLoading) return;
+    if (!user) {
+      // Signed out — remove all active listeners and clear cached messages
+      Object.values(channelUnsubs.current).forEach((u) => u());
+      channelUnsubs.current = {};
+      setMessages({});
+      return;
+    }
 
     // Subscribe to any channel not yet subscribed
     joinedChannelIds.forEach((channelId) => {

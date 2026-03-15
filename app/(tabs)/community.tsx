@@ -1,7 +1,8 @@
 /**
  * Community screen
  * Browse hobby channels, join them, and chat with other teens who share
- * the same interests. Messages are stored locally (AsyncStorage).
+ * the same interests. Messages are stored in Firestore (real-time via
+ * onSnapshot). The joined-channel list is persisted locally in AsyncStorage.
  */
 import {
   View,

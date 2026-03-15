@@ -5,6 +5,8 @@ import {
   signInWithEmailAndPassword,
   signOut as fbSignOut,
   deleteUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   onAuthStateChanged,
 } from "firebase/auth";
 import { doc, deleteDoc } from "firebase/firestore";
@@ -17,8 +19,8 @@ type AuthContextType = {
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Deletes Firestore profile + progress data, then deletes the Firebase Auth user. */
-  deleteAccount: () => Promise<void>;
+  /** Re-authenticates, deletes Firestore profile + progress data, then deletes the Firebase Auth user. */
+  deleteAccount: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,19 +49,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fbSignOut(auth);
   }
 
-  async function deleteAccount() {
-    if (!user) return;
+  async function deleteAccount(password: string) {
+    if (!user || !user.email) return;
+    // Re-authenticate so Firebase accepts the deleteUser call
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
     // Delete Firestore data first
     await Promise.allSettled([
       deleteDoc(doc(db, "users", user.uid)),
       deleteDoc(doc(db, "progress", user.uid)),
     ]);
-    // Delete the Firebase Auth account (requires recent sign-in)
-    await deleteUser(user);
+    // Use auth.currentUser — the state ref may be stale after re-auth
+    const freshUser = auth.currentUser;
+    if (freshUser) await deleteUser(freshUser);
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthLoaded, signUp, signIn, signOut, deleteAccount }}>
+    <AuthContext.Provider value={{ user, isAuthLoaded, signUp, signIn, signOut, deleteAccount } as AuthContextType}>
       {children}
     </AuthContext.Provider>
   );

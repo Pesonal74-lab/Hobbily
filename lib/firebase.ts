@@ -1,3 +1,9 @@
+/**
+ * firebase.ts
+ * Initialises the Firebase app, Auth (with AsyncStorage persistence so the
+ * auth token survives app restarts), and Firestore. Import `auth` and `db`
+ * from here throughout the app — do not call initializeApp() elsewhere.
+ */
 import { initializeApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";

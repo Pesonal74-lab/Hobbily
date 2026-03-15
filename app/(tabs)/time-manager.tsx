@@ -167,8 +167,17 @@ function PracticeTimerModal({ visible, onClose, onComplete, defaultTitle = "Prac
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!visible) { reset(); }
-  }, [visible]);
+    if (!visible) {
+      reset();
+    } else {
+      // Sync props → state each time the modal freshly opens so that a
+      // different hobby's title/duration is reflected (useState initial values
+      // are only used on mount, not on subsequent renders).
+      setSessionTitle(defaultTitle);
+      setSelectedMinutes(defaultMinutes);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]); // defaultTitle/defaultMinutes intentionally omitted — sync only on open
 
   useEffect(() => {
     if (running && secondsLeft > 0) {
