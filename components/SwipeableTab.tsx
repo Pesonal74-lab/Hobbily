@@ -55,9 +55,10 @@ export default function SwipeableTab({ tabIndex, backgroundColor, children }: Pr
 
   const pan = useRef(
     PanResponder.create({
-      // Only capture clearly horizontal gestures (dx strictly dominant over dy)
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        Math.abs(g.dx) > 20 && Math.abs(g.dy) < Math.abs(g.dx) * 0.4,
+      // Only start when clearly horizontal — use non-capture so child ScrollViews
+      // and tappable elements get first opportunity to handle the gesture.
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 25 && Math.abs(g.dy) < Math.abs(g.dx) * 0.4,
 
       onPanResponderMove: (_, g) => {
         // Extra guard: only translate when horizontal movement is strictly dominant

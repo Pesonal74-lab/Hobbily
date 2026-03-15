@@ -13,6 +13,9 @@ import {
   Modal,
   Switch,
   TouchableOpacity,
+  Animated,
+  PanResponder,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useState, useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -439,6 +442,34 @@ function TaskModal({ visible, onClose, onSave, defaultDate, colors, hobbies, edi
   const [time, setTime] = useState(editingTask?.time ?? "09:00");
   const [duration, setDuration] = useState(String(editingTask?.duration ?? 30));
 
+  // Swipe-down-to-close: track sheet position with an Animated value
+  const panY = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      // Activate on clear downward swipes (dy dominant over dx)
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => { if (gs.dy > 0) panY.setValue(gs.dy); },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 80) {
+          // Swipe past threshold — animate out then close
+          Animated.timing(panY, { toValue: 500, duration: 150, useNativeDriver: true }).start(() => {
+            panY.setValue(0);
+            onClose();
+          });
+        } else {
+          // Not far enough — snap back
+          Animated.spring(panY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(panY, { toValue: 0, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  // Reset sheet position whenever the modal closes
+  useEffect(() => { if (!visible) panY.setValue(0); }, [visible]);
+
   // Reset fields when modal opens (handles switching between add and edit)
   function handleOpen() {
     setTitle(editingTask?.title ?? "");
@@ -471,8 +502,15 @@ function TaskModal({ visible, onClose, onSave, defaultDate, colors, hobbies, edi
       onRequestClose={onClose}
       onShow={handleOpen}
     >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}>
+        {/* Transparent area above the sheet — tap to cancel */}
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={{ flex: 1 }} />
+        </TouchableWithoutFeedback>
+        <Animated.View
+          style={[styles.modalSheet, { backgroundColor: colors.card, transform: [{ translateY: panY }] }]}
+          {...panResponder.panHandlers}
+        >
           <View style={styles.modalHandle} />
 
           {/* Modal header */}
@@ -612,7 +650,7 @@ function TaskModal({ visible, onClose, onSave, defaultDate, colors, hobbies, edi
               <Text style={{ color: "#fff", fontWeight: "700" }}>{isEdit ? "Save Changes" : "Add"}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

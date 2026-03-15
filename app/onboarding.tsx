@@ -414,34 +414,98 @@ function StepBasicInfo({ colors, username, setUsername, age, setAge, city, setCi
 
 // ── Step 3: Interests ─────────────────────────────────────────────────────────
 
+const PREDEFINED_LABELS = new Set(HOBBY_OPTIONS.map((h) => h.label));
+
 function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
+  const [customInput, setCustomInput] = useState("");
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Hobbies the user typed themselves (not in the predefined grid)
+  const customHobbies: string[] = selected.filter((h: string) => !PREDEFINED_LABELS.has(h));
+
+  function addCustomHobby() {
+    const label = customInput.trim();
+    if (!label) return;
+    if (!selected.includes(label)) onToggle(label);
+    setCustomInput("");
+  }
+
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <View style={styles.stepHeader}>
         <Text style={[styles.stepTitle, { color: colors.text }]}>What do you love?</Text>
         <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
           Pick at least one. You can change these later.
         </Text>
       </View>
-      <ScrollView contentContainerStyle={styles.hobbyGrid} showsVerticalScrollIndicator={false}>
-        {HOBBY_OPTIONS.map((h) => {
-          const active = selected.includes(h.label);
-          return (
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
+        {/* Predefined hobby tiles */}
+        <View style={styles.hobbyGrid}>
+          {HOBBY_OPTIONS.map((h) => {
+            const active = selected.includes(h.label);
+            return (
+              <TouchableOpacity
+                key={h.label}
+                onPress={() => onToggle(h.label)}
+                style={[
+                  styles.hobbyTile,
+                  { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border },
+                ]}
+              >
+                <Ionicons name={h.icon} size={26} color={active ? "#fff" : colors.secondaryText} />
+                <Text style={[styles.hobbyTileText, { color: active ? "#fff" : colors.text }]} numberOfLines={2}>
+                  {h.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Custom hobby input */}
+        <View style={styles.customHobbySection}>
+          <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>
+            Don't see yours? Add it
+          </Text>
+          <View style={styles.customHobbyRow}>
+            <TextInput
+              style={[styles.customHobbyInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+              placeholder="e.g. Skateboarding, Knitting…"
+              placeholderTextColor={colors.secondaryText}
+              value={customInput}
+              onChangeText={setCustomInput}
+              onSubmitEditing={addCustomHobby}
+              returnKeyType="done"
+              onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
+            />
             <TouchableOpacity
-              key={h.label}
-              onPress={() => onToggle(h.label)}
-              style={[
-                styles.hobbyTile,
-                { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border },
-              ]}
+              onPress={addCustomHobby}
+              style={[styles.customAddBtn, { backgroundColor: customInput.trim() ? colors.primary : colors.border }]}
+              disabled={!customInput.trim()}
             >
-              <Ionicons name={h.icon} size={26} color={active ? "#fff" : colors.secondaryText} />
-              <Text style={[styles.hobbyTileText, { color: active ? "#fff" : colors.text }]} numberOfLines={2}>
-                {h.label}
-              </Text>
+              <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
-          );
-        })}
+          </View>
+
+          {/* Chips for custom hobbies */}
+          {customHobbies.length > 0 && (
+            <View style={styles.customChipsRow}>
+              {customHobbies.map((h: string) => (
+                <TouchableOpacity
+                  key={h}
+                  onPress={() => onToggle(h)}
+                  style={[styles.customChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}
+                >
+                  <Ionicons name="star" size={12} color={colors.primary} />
+                  <Text style={[styles.customChipText, { color: colors.primary }]}>{h}</Text>
+                  <Ionicons name="close-circle" size={14} color={colors.primary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
       <View style={styles.stepFooter}>
         <TouchableOpacity
@@ -454,7 +518,7 @@ function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
           {canNext && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />}
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -609,6 +673,14 @@ const styles = StyleSheet.create({
   welcomeTagline: { fontSize: 18, textAlign: "center", lineHeight: 28, marginVertical: 16 },
   // Hobby grid — 3 columns so labels have room to breathe
   hobbyGrid: { flexDirection: "row", flexWrap: "wrap", padding: 16, gap: 12 },
+  // Custom hobby adder
+  customHobbySection: { paddingHorizontal: 16, paddingBottom: 16 },
+  customHobbyRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  customHobbyInput: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14 },
+  customAddBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  customChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  customChipText: { fontSize: 13, fontWeight: "600" },
   hobbyTile: {
     width: (SCREEN_W - 56) / 3,
     aspectRatio: 1,

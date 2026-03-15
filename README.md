@@ -21,6 +21,7 @@ An app that helps teens manage their time, communicate with others about shared 
 - Full Windows-style OOBE flow: create account → pick hobbies → set free time → enter name/bio → done
 - Returning users are automatically skipped past account creation
 - Age validation (13–150) with inline error and red border
+- **Custom hobbies** — type any hobby not in the predefined grid; added as removable chips
 
 ### Feed
 - Scrollable community post feed, newest first (real-time via Firestore)
@@ -45,6 +46,7 @@ An app that helps teens manage their time, communicate with others about shared 
 - Mark items complete with a per-day progress bar
 - **Daily hobby reminder** — a banner shown once per day encouraging 5–10 min of hobby practice
 - Toggle the daily reminder on/off with a switch
+- Add/edit modal dismisses by tapping the backdrop or swiping down
 
 ### Community
 - 10 predefined hobby channels: Photography, Music, Sports, Coding, Drawing & Art, Cooking, Gaming, Reading, Dance, Film & Video
@@ -68,7 +70,7 @@ An app that helps teens manage their time, communicate with others about shared 
 - **Badges tab** — 7 achievements, earned ones shown in solid blue; locked ones faded
 - **Settings tab** — dark mode toggle, daily reminder toggle, account info card
 - **Log Out** button with confirmation modal
-- **Delete Account** — 2-step confirmation: check "I understand" + type `DELETE`; removes all Firestore data and the Firebase Auth account
+- **Delete Account** — 3-step confirmation: check "I understand" + type `DELETE` + enter password; removes all Firestore data and the Firebase Auth account
 - **Reset dismissed tips** — restores all "don't show again" tip banners and the daily reminder banner
 
 ### Progress & Streaks
