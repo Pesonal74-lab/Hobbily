@@ -1,56 +1,62 @@
-/**
- * ProfileContext
- * Provides the current user's profile data to the entire app.
- *
- * On mount it loads the persisted profile from AsyncStorage (falling back to
- * a default if nothing is saved yet). Calling saveProfile updates both
- * in-memory state and storage atomically.
- *
- * Provider hierarchy: ThemeProvider → ProfileProvider → PostsProvider
- * (ProfileProvider wraps PostsProvider so posts can read the current username)
- */
 import { createContext, useContext, useState, useEffect } from "react";
 import { Profile } from "../types/Profile";
 import { loadProfile, saveProfile as persistProfile } from "../services/profileService";
+import { useAuth } from "./AuthContext";
 
-/** Shape of everything exposed by this context */
+const DEFAULT_PROFILE: Profile = {
+  username: "explorer",
+  email: "",
+  age: "",
+  bio: "",
+  hobbies: [],
+  preferredCity: "",
+  city: "",
+  freeTimePerDay: "30-60",
+  hasOnboarded: false,
+  savedOpportunities: [],
+};
+
 type ProfileContextType = {
   profile: Profile;
-  /** Persists an updated profile to storage and updates in-memory state */
+  /** True once the profile has been loaded from Firestore (or determined no user) */
+  isLoaded: boolean;
   saveProfile: (updated: Profile) => Promise<void>;
 };
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
-  // Start with sensible defaults so screens render immediately on first launch
-  const [profile, setProfile] = useState<Profile>({
-    username: "alex",
-    age: "",
-    bio: "",
-    hobbies: ["Photography"],
-    preferredCity: "London",
-  });
+  const { user, isAuthLoaded } = useAuth();
+  const [profile, setProfile] = useState<Profile>({ ...DEFAULT_PROFILE });
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Replace defaults with the real persisted data as soon as it's available
   useEffect(() => {
-    loadProfile().then(setProfile);
-  }, []);
+    if (!isAuthLoaded) return;
+    if (!user) {
+      // No authenticated user — reset so auth gate redirects to onboarding
+      setProfile({ ...DEFAULT_PROFILE });
+      setIsLoaded(true);
+      return;
+    }
+    setIsLoaded(false);
+    loadProfile(user.uid).then((p) => {
+      setProfile(p);
+      setIsLoaded(true);
+    });
+  }, [user, isAuthLoaded]);
 
-  /** Optimistically updates state, then flushes to AsyncStorage */
   async function saveProfile(updated: Profile) {
     setProfile(updated);
-    await persistProfile(updated);
+    if (user) await persistProfile(user.uid, updated);
   }
 
   return (
-    <ProfileContext.Provider value={{ profile, saveProfile }}>
+    <ProfileContext.Provider value={{ profile, isLoaded, saveProfile }}>
       {children}
     </ProfileContext.Provider>
   );
 }
 
-/** Hook to consume ProfileContext — must be used inside ProfileProvider */
 export function useProfile() {
   const ctx = useContext(ProfileContext);
   if (!ctx) throw new Error("useProfile must be used inside ProfileProvider");

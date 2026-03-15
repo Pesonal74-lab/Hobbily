@@ -1,37 +1,26 @@
-/**
- * profileService
- * All AsyncStorage I/O for the user's profile lives here.
- *
- * The profile is stored as a single JSON object. On load, it is merged with
- * DEFAULT_PROFILE so that any new fields added in future versions receive
- * their defaults automatically (forward-compatibility shim).
- */
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { db } from "../lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { Profile } from "../types/Profile";
 
-const PROFILE_KEY = "hobbily_profile";
-
-/** Fallback values used on first launch or when a field is missing */
 const DEFAULT_PROFILE: Profile = {
-  username: "alex",
+  username: "explorer",
+  email: "",
   age: "",
   bio: "",
-  hobbies: ["Photography"],
-  preferredCity: "London",
+  hobbies: [],
+  preferredCity: "",
+  city: "",
+  freeTimePerDay: "30-60",
+  hasOnboarded: false,
+  savedOpportunities: [],
 };
 
-/**
- * Loads the persisted profile from storage.
- * Merges with DEFAULT_PROFILE so new fields always have a value.
- */
-export async function loadProfile(): Promise<Profile> {
-  const raw = await AsyncStorage.getItem(PROFILE_KEY);
-  if (!raw) return DEFAULT_PROFILE;
-  // Spread order: defaults first, then stored values override them
-  return { ...DEFAULT_PROFILE, ...JSON.parse(raw) } as Profile;
+export async function loadProfile(uid: string): Promise<Profile> {
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists()) return { ...DEFAULT_PROFILE };
+  return { ...DEFAULT_PROFILE, ...snap.data() } as Profile;
 }
 
-/** Persists the full profile object to storage */
-export async function saveProfile(profile: Profile): Promise<void> {
-  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+export async function saveProfile(uid: string, profile: Profile): Promise<void> {
+  await setDoc(doc(db, "users", uid), profile, { merge: true });
 }

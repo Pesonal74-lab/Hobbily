@@ -1,16 +1,20 @@
 /**
  * CommunityContext
- * Manages hobby channels and their messages. Channels are predefined; messages
- * are stored in AsyncStorage. Users can join channels and post messages.
+ * Channels are predefined. Messages live in Firestore under
+ * channels/{channelId}/messages/{messageId} with real-time listeners.
+ * Joined channel list persisted locally in AsyncStorage (device preference).
  */
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  collection, doc, addDoc, deleteDoc, query, orderBy, limit, onSnapshot,
+} from "firebase/firestore";
 import { Channel, CommunityMessage } from "../types/CommunityMessage";
+import { useAuth } from "./AuthContext";
+import { db } from "../lib/firebase";
 
-const MESSAGES_KEY = "@hobbily_community_messages";
 const JOINED_KEY = "@hobbily_joined_channels";
 
-/** Predefined hobby channels — covers common teen interests */
 export const DEFAULT_CHANNELS: Channel[] = [
   { id: "photography", name: "Photography", icon: "camera-outline", description: "Share shots, tips, and camera gear", members: 142 },
   { id: "music", name: "Music", icon: "musical-notes-outline", description: "Instruments, playlists, and gigs", members: 218 },
@@ -38,30 +42,43 @@ type CommunityContextType = {
 const CommunityContext = createContext<CommunityContextType | undefined>(undefined);
 
 export function CommunityProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Record<string, CommunityMessage[]>>({});
   const [joinedChannelIds, setJoinedChannelIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Track active Firestore listeners so we can tear them down
+  const channelUnsubs = useRef<Record<string, () => void>>({});
 
+  // Load joined channels from AsyncStorage on mount
   useEffect(() => {
-    (async () => {
-      try {
-        const [rawMessages, rawJoined] = await Promise.all([
-          AsyncStorage.getItem(MESSAGES_KEY),
-          AsyncStorage.getItem(JOINED_KEY),
-        ]);
-        if (rawMessages) setMessages(JSON.parse(rawMessages));
-        if (rawJoined) setJoinedChannelIds(JSON.parse(rawJoined));
-        else setJoinedChannelIds(["photography", "sports"]); // sensible defaults
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    AsyncStorage.getItem(JOINED_KEY).then((raw) => {
+      setJoinedChannelIds(raw ? JSON.parse(raw) : ["photography", "sports"]);
+      setIsLoading(false);
+    });
+    return () => {
+      // Tear down all listeners when context unmounts
+      Object.values(channelUnsubs.current).forEach((u) => u());
+    };
   }, []);
 
-  async function persistMessages(updated: Record<string, CommunityMessage[]>) {
-    setMessages(updated);
-    await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(updated));
-  }
+  // Subscribe to Firestore messages for all joined channels whenever they change
+  useEffect(() => {
+    if (isLoading || !user) return;
+
+    // Subscribe to any channel not yet subscribed
+    joinedChannelIds.forEach((channelId) => {
+      if (channelUnsubs.current[channelId]) return;
+      const q = query(
+        collection(db, "channels", channelId, "messages"),
+        orderBy("createdAt", "asc"),
+        limit(200)
+      );
+      channelUnsubs.current[channelId] = onSnapshot(q, (snap) => {
+        const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as CommunityMessage[];
+        setMessages((prev) => ({ ...prev, [channelId]: msgs }));
+      });
+    });
+  }, [joinedChannelIds, isLoading, user]);
 
   async function persistJoined(updated: string[]) {
     setJoinedChannelIds(updated);
@@ -69,30 +86,36 @@ export function CommunityProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function joinChannel(id: string) {
-    if (!joinedChannelIds.includes(id)) {
-      await persistJoined([...joinedChannelIds, id]);
-    }
+    if (joinedChannelIds.includes(id)) return;
+    await persistJoined([...joinedChannelIds, id]);
   }
 
   async function leaveChannel(id: string) {
+    // Tear down listener
+    if (channelUnsubs.current[id]) {
+      channelUnsubs.current[id]();
+      delete channelUnsubs.current[id];
+    }
+    setMessages((prev) => {
+      const updated = { ...prev };
+      delete updated[id];
+      return updated;
+    });
     await persistJoined(joinedChannelIds.filter((c) => c !== id));
   }
 
   async function sendMessage(channelId: string, author: string, text: string) {
-    const msg: CommunityMessage = {
-      id: Date.now().toString(),
+    await addDoc(collection(db, "channels", channelId, "messages"), {
       channelId,
       author,
       text,
       createdAt: new Date().toISOString(),
-    };
-    const existing = messages[channelId] ?? [];
-    await persistMessages({ ...messages, [channelId]: [...existing, msg] });
+    });
+    // Real-time listener updates state automatically
   }
 
   async function deleteMessage(channelId: string, messageId: string) {
-    const updated = (messages[channelId] ?? []).filter((m) => m.id !== messageId);
-    await persistMessages({ ...messages, [channelId]: updated });
+    await deleteDoc(doc(db, "channels", channelId, "messages", messageId));
   }
 
   return (

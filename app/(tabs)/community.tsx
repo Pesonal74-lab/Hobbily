@@ -23,6 +23,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useCommunity, DEFAULT_CHANNELS } from "../../context/CommunityContext";
 import { useProfile } from "../../context/ProfileContext";
 import SwipeableTab from "../../components/SwipeableTab";
+import TipBanner, { TIP_KEYS } from "../../components/TipBanner";
 import { Channel, CommunityMessage } from "../../types/CommunityMessage";
 
 // ── Seed messages for a better first-run experience ───────────────────────────
@@ -330,6 +331,12 @@ export default function CommunityScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        <TipBanner
+          storageKey={TIP_KEYS.communityChannels}
+          text="Join channels that match your hobbies to chat with others who share your interests!"
+          icon="people-outline"
+          colors={colors}
+        />
         {/* Search bar */}
         <View style={styles.searchWrap}>
           <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>

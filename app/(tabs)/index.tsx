@@ -1,126 +1,283 @@
 /**
- * Feed screen (tab index 0)
- * Shows the weather widget at the top, then a scrollable list of all community posts.
- * Swipe left to go to Schedule, swipe right — no previous tab.
+ * Home / Dashboard (tab 0)
+ * Greeting, streak card, today's tasks, suggested opportunities, quick actions.
  */
 import {
-  View,
-  ScrollView,
-  Text,
-  StyleSheet,
-  Pressable,
-  Image,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal,
 } from "react-native";
-import { useEffect, useState } from "react";
-import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import WeatherBox from "../../components/WeatherBox";
-import PostCard from "../../components/PostCard";
-import SwipeableTab from "../../components/SwipeableTab";
-import { fetchWeather } from "../../services/weatherService";
-import { useTheme } from "../../context/ThemeContext";
-import { usePosts } from "../../context/PostsContext";
-import { useProfile } from "../../context/ProfileContext";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useTheme } from "../../context/ThemeContext";
+import { useProfile } from "../../context/ProfileContext";
+import { useTime } from "../../context/TimeContext";
+import { useProgress } from "../../context/ProgressContext";
+import SwipeableTab from "../../components/SwipeableTab";
+import TipBanner, { TIP_KEYS } from "../../components/TipBanner";
+import { useState } from "react";
 
-export default function FeedScreen() {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+function greeting(name: string): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
+  return `Good ${part}, ${name || "there"}!`;
+}
+
+function formatTime(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+// Opportunities that match user hobbies (subset of OPPORTUNITIES from explore tab)
+const QUICK_OPPS = [
+  { id: "2", name: "Maktoob Youth Coding Bootcamp", category: "Coding", cost: "Free", location: "Ramallah / Online" },
+  { id: "4", name: "Al-Kamandjati Music School", category: "Music", cost: "Free", location: "Ramallah" },
+  { id: "1", name: "Youth Photography Workshop", category: "Photography", cost: "Subsidised", location: "Tel Aviv" },
+  { id: "3", name: "Football for Peace Academy", category: "Sports", cost: "Free", location: "Various" },
+  { id: "5", name: "Young Creators Art Studio", category: "Drawing & Art", cost: "Subsidised", location: "Jerusalem" },
+  { id: "10", name: "e-Sports & Game Design Camp", category: "Gaming", cost: "Paid", location: "Haifa" },
+  { id: "8", name: "Dance Fusion Workshop", category: "Dance", cost: "Subsidised", location: "Kibbutz Netiv HaL." },
+  { id: "9", name: "Kitchen Explorers Cooking Club", category: "Cooking", cost: "Free", location: "Jaffa" },
+];
+
+const COST_COLORS: Record<string, string> = { Free: "#10B981", Subsidised: "#2563EB", Paid: "#8B5CF6" };
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StreakCard({ streak, sessions, minutes, freeze, onFreeze, colors }: {
+  streak: number; sessions: number; minutes: number;
+  freeze: boolean; onFreeze: () => void; colors: any;
+}) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return (
+    <View style={[styles.streakCard, { backgroundColor: colors.primary }]}>
+      <View style={styles.streakLeft}>
+        <View style={styles.streakFlameRow}>
+          <Ionicons name="flame" size={28} color="#FCD34D" />
+          <Text style={styles.streakNum}>{streak}</Text>
+        </View>
+        <Text style={styles.streakLabel}>day streak</Text>
+      </View>
+      <View style={styles.streakDivider} />
+      <View style={styles.streakStats}>
+        <View style={styles.streakStat}>
+          <Text style={styles.streakStatNum}>{sessions}</Text>
+          <Text style={styles.streakStatLabel}>sessions</Text>
+        </View>
+        <View style={styles.streakStat}>
+          <Text style={styles.streakStatNum}>{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</Text>
+          <Text style={styles.streakStatLabel}>practiced</Text>
+        </View>
+      </View>
+      {freeze && (
+        <TouchableOpacity onPress={onFreeze} style={styles.freezeBtn}>
+          <Ionicons name="snow-outline" size={16} color="#93C5FD" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function TodayTaskRow({ title, time, completed, type, colors }: { title: string; time: string; completed: boolean; type: string; colors: any }) {
+  return (
+    <View style={[styles.todayTask, { backgroundColor: colors.card, borderColor: colors.border, opacity: completed ? 0.55 : 1 }]}>
+      <View style={[styles.todayTaskDot, { backgroundColor: type === "hobby" ? colors.primary : colors.accent }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.todayTaskTitle, { color: colors.text }, completed && { textDecorationLine: "line-through" }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={[styles.todayTaskTime, { color: colors.secondaryText }]}>{formatTime(time)}</Text>
+      </View>
+      {completed && <Ionicons name="checkmark-circle" size={18} color={colors.success} />}
+    </View>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
+export default function HomeScreen() {
   const { colors } = useTheme();
-  const { posts, deletePost, isLoading } = usePosts();
-  const { profile, saveProfile } = useProfile();
+  const { profile } = useProfile();
+  const { tasks } = useTime();
+  const { currentStreak, totalSessions, totalMinutes, streakFreezeAvailable, useStreakFreeze } = useProgress();
+  const [notifVisible, setNotifVisible] = useState(false);
 
-  const [weather, setWeather] = useState<any>(null);
-  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const today = todayISO();
+  const todayTasks = tasks
+    .filter((t) => t.date === today)
+    .sort((a, b) => a.time.localeCompare(b.time))
+    .slice(0, 4);
 
-  useEffect(() => {
-    loadWeather(profile.preferredCity || "London");
-  }, []);
+  const completedToday = todayTasks.filter((t) => t.completed).length;
 
-  async function loadWeather(city: string) {
-    const data = await fetchWeather(city);
-    if (!data || data.cod === "404") return;
-    setWeather({
-      city: data.name,
-      temperature: Math.round(data.main.temp),
-      description: data.weather[0].description,
-      condition: data.weather[0].main,
-    });
-    setCoords({ lat: data.coord.lat, lon: data.coord.lon });
-  }
-
-  async function handleCitySelect(city: string) {
-    loadWeather(city);
-    await saveProfile({ ...profile, preferredCity: city });
-  }
+  // Suggested opportunities matched to hobbies
+  const suggested = profile.hobbies.length > 0
+    ? QUICK_OPPS.filter((o) => profile.hobbies.some((h) => o.category.toLowerCase().includes(h.toLowerCase()) || h.toLowerCase().includes(o.category.toLowerCase()))).slice(0, 2)
+    : QUICK_OPPS.slice(0, 2);
 
   return (
     <SwipeableTab tabIndex={0} backgroundColor={colors.background}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <View>
-            <Text style={[styles.headerTitle, { color: colors.text }]}>Hobbily</Text>
-            <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
-              What's the community sharing?
-            </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.greeting, { color: colors.text }]}>{greeting(profile.username)}</Text>
+            {profile.city ? (
+              <View style={styles.locationRow}>
+                <Ionicons name="location-outline" size={13} color={colors.secondaryText} />
+                <Text style={[styles.locationText, { color: colors.secondaryText }]}>{profile.city}</Text>
+              </View>
+            ) : null}
           </View>
-          <Image
-            source={require("../../assets/images/Hobbily_Logo.png")}
-            style={styles.headerLogo}
-          />
+          <TouchableOpacity onPress={() => setNotifVisible(true)} style={[styles.notifBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Ionicons name="notifications-outline" size={20} color={colors.text} />
+          </TouchableOpacity>
+          <Image source={require("../../assets/images/Hobbily_Logo.png")} style={styles.headerLogo} />
         </View>
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {weather && (
-            <WeatherBox
-              weather={weather}
-              coords={coords}
-              onCitySelect={handleCitySelect}
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+
+          <TipBanner
+            storageKey={TIP_KEYS.feedFirstPost}
+            text="Share what you've been practicing! Tap the pencil button to create your first post."
+            icon="create-outline"
+            colors={colors}
+          />
+
+          {/* Streak card */}
+          <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+            <StreakCard
+              streak={currentStreak}
+              sessions={totalSessions}
+              minutes={totalMinutes}
+              freeze={streakFreezeAvailable}
+              onFreeze={useStreakFreeze}
               colors={colors}
             />
-          )}
-
-          <View style={styles.feedHeader}>
-            <Text style={[styles.feedTitle, { color: colors.text }]}>Community Posts</Text>
-            <Pressable
-              onPress={() => router.push("/create-post")}
-              style={[styles.newPostBtn, { backgroundColor: colors.primary }]}
-            >
-              <Ionicons name="add" size={20} color="#fff" />
-              <Text style={styles.newPostBtnText}>New Post</Text>
-            </Pressable>
           </View>
 
-          {!isLoading && posts.length === 0 && (
-            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="newspaper-outline" size={44} color={colors.secondaryText} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
-              <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>
-                Be the first to share something with the community!
-              </Text>
-              <Pressable
-                onPress={() => router.push("/create-post")}
-                style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
+          {/* Today's schedule */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Today's Schedule</Text>
+              <TouchableOpacity onPress={() => router.push("/(tabs)/time-manager")}>
+                <Text style={[styles.sectionLink, { color: colors.primary }]}>View all</Text>
+              </TouchableOpacity>
+            </View>
+
+            {todayTasks.length === 0 ? (
+              <View style={[styles.emptyToday, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Ionicons name="checkmark-done-circle-outline" size={32} color={colors.success} />
+                <Text style={[styles.emptyTodayText, { color: colors.secondaryText }]}>
+                  Nothing scheduled today — {"\n"}
+                  <Text style={{ color: colors.primary, fontWeight: "700" }} onPress={() => router.push("/(tabs)/time-manager")}>
+                    Add an activity
+                  </Text>
+                </Text>
+              </View>
+            ) : (
+              <>
+                {todayTasks.map((t) => (
+                  <TodayTaskRow key={t.id} title={t.title} time={t.time} completed={t.completed} type={t.type} colors={colors} />
+                ))}
+                {completedToday > 0 && (
+                  <View style={[styles.progressMini, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={[styles.progressMiniBar, { backgroundColor: colors.border }]}>
+                      <View style={[styles.progressMiniFill, { backgroundColor: colors.success, width: `${(completedToday / todayTasks.length) * 100}%` as any }]} />
+                    </View>
+                    <Text style={[styles.progressMiniText, { color: colors.secondaryText }]}>
+                      {completedToday}/{todayTasks.length} done today
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+
+          {/* Quick actions */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+            <View style={styles.quickActions}>
+              {[
+                { icon: "add-circle-outline" as const, label: "Add Task", action: () => router.push("/(tabs)/time-manager"), color: colors.primary },
+                { icon: "compass-outline" as const, label: "Explore", action: () => router.push("/(tabs)/opportunities"), color: "#8B5CF6" },
+                { icon: "chatbubbles-outline" as const, label: "Community", action: () => router.push("/(tabs)/community"), color: "#10B981" },
+                { icon: "create-outline" as const, label: "New Post", action: () => router.push("/create-post"), color: "#F59E0B" },
+              ].map((a) => (
+                <TouchableOpacity key={a.label} onPress={a.action} style={[styles.quickAction, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={[styles.quickActionIcon, { backgroundColor: a.color + "18" }]}>
+                    <Ionicons name={a.icon} size={22} color={a.color} />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: colors.text }]}>{a.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Suggested opportunities */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Suggested for You</Text>
+              <TouchableOpacity onPress={() => router.push("/(tabs)/opportunities")}>
+                <Text style={[styles.sectionLink, { color: colors.primary }]}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            {suggested.map((opp) => (
+              <TouchableOpacity
+                key={opp.id}
+                onPress={() => router.push("/(tabs)/opportunities")}
+                style={[styles.oppCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
-                <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Create a Post</Text>
-              </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.oppName, { color: colors.text }]} numberOfLines={1}>{opp.name}</Text>
+                  <View style={styles.oppMeta}>
+                    <Ionicons name="location-outline" size={12} color={colors.secondaryText} />
+                    <Text style={[styles.oppLocation, { color: colors.secondaryText }]}>{opp.location}</Text>
+                  </View>
+                </View>
+                <View style={[styles.costChip, { backgroundColor: COST_COLORS[opp.cost] + "18" }]}>
+                  <Text style={[styles.costText, { color: COST_COLORS[opp.cost] }]}>{opp.cost}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Your hobbies */}
+          {profile.hobbies.length > 0 && (
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Hobbies</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {profile.hobbies.map((h) => (
+                  <View key={h} style={[styles.hobbyChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Ionicons name="star-outline" size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                    <Text style={[styles.hobbyChipText, { color: colors.text }]}>{h}</Text>
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           )}
-
-          {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              colors={colors}
-              onEdit={() => router.push(`/edit-post/${post.id}`)}
-              onDelete={() => deletePost(post.id)}
-            />
-          ))}
         </ScrollView>
+
+        {/* Notification modal (placeholder) */}
+        <Modal visible={notifVisible} transparent animationType="fade" onRequestClose={() => setNotifVisible(false)}>
+          <TouchableOpacity style={styles.modalOverlay} onPress={() => setNotifVisible(false)}>
+            <View style={[styles.notifModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Ionicons name="notifications-outline" size={32} color={colors.secondaryText} style={{ marginBottom: 8 }} />
+              <Text style={[{ color: colors.text, fontWeight: "700", fontSize: 16, marginBottom: 6 }]}>Push Notifications</Text>
+              <Text style={[{ color: colors.secondaryText, textAlign: "center", fontSize: 14 }]}>
+                Push notifications are coming in Phase 2!{"\n"}Stay tuned.
+              </Text>
+              <TouchableOpacity onPress={() => setNotifVisible(false)} style={[styles.notifClose, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Got it</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     </SwipeableTab>
   );
@@ -130,47 +287,61 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
+    gap: 10,
   },
-  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, marginTop: 2 },
+  greeting: { fontSize: 22, fontWeight: "800", letterSpacing: -0.3 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
+  locationText: { fontSize: 12 },
+  notifBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   headerLogo: { width: 36, height: 36, resizeMode: "contain" },
-  feedHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  feedTitle: { fontSize: 18, fontWeight: "700" },
-  newPostBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  newPostBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  emptyCard: {
-    alignItems: "center",
-    padding: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    marginTop: 8,
-  },
-  emptyTitle: { fontSize: 17, fontWeight: "700", marginTop: 12, marginBottom: 6 },
-  emptyBody: { textAlign: "center", fontSize: 14, lineHeight: 20, marginBottom: 20 },
-  emptyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
+  section: { paddingHorizontal: 16, marginTop: 20 },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: 17, fontWeight: "700" },
+  sectionLink: { fontSize: 13, fontWeight: "600" },
+  // Streak
+  streakCard: { borderRadius: 18, padding: 18, flexDirection: "row", alignItems: "center" },
+  streakLeft: { alignItems: "center", minWidth: 70 },
+  streakFlameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  streakNum: { color: "#fff", fontSize: 36, fontWeight: "900" },
+  streakLabel: { color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 2 },
+  streakDivider: { width: 1, height: 50, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 16 },
+  streakStats: { flex: 1, flexDirection: "row", gap: 16 },
+  streakStat: { alignItems: "center" },
+  streakStatNum: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  streakStatLabel: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
+  freezeBtn: { padding: 6 },
+  // Today tasks
+  todayTask: { flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8, gap: 10 },
+  todayTaskDot: { width: 8, height: 8, borderRadius: 4 },
+  todayTaskTitle: { fontSize: 14, fontWeight: "600" },
+  todayTaskTime: { fontSize: 12, marginTop: 1 },
+  emptyToday: { padding: 20, borderRadius: 14, borderWidth: 1, alignItems: "center", gap: 8 },
+  emptyTodayText: { fontSize: 14, textAlign: "center", lineHeight: 22 },
+  progressMini: { padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4, gap: 6 },
+  progressMiniBar: { height: 5, borderRadius: 3, overflow: "hidden" },
+  progressMiniFill: { height: "100%", borderRadius: 3 },
+  progressMiniText: { fontSize: 12, textAlign: "right" },
+  // Quick actions
+  quickActions: { flexDirection: "row", gap: 10 },
+  quickAction: { flex: 1, alignItems: "center", padding: 12, borderRadius: 14, borderWidth: 1, gap: 6 },
+  quickActionIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  quickActionLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
+  // Opportunities
+  oppCard: { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 8, gap: 10 },
+  oppName: { fontSize: 14, fontWeight: "700", marginBottom: 3 },
+  oppMeta: { flexDirection: "row", alignItems: "center", gap: 3 },
+  oppLocation: { fontSize: 12 },
+  costChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  costText: { fontSize: 11, fontWeight: "700" },
+  // Hobbies
+  hobbyChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  hobbyChipText: { fontSize: 13, fontWeight: "600" },
+  // Notification modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
+  notifModal: { width: 280, padding: 24, borderRadius: 20, borderWidth: 1, alignItems: "center" },
+  notifClose: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
 });

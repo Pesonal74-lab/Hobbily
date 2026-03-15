@@ -1,0 +1,64 @@
+/**
+ * TipBanner
+ * A dismissible tip card. Once dismissed it never shows again (AsyncStorage).
+ * Reset via Settings → "Reset dismissed tips".
+ */
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
+
+type Props = {
+  storageKey: string;
+  text: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  colors: any;
+};
+
+export default function TipBanner({ storageKey, text, icon = "bulb-outline", colors }: Props) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(storageKey).then((val) => {
+      if (val !== "dismissed") setVisible(true);
+    });
+  }, [storageKey]);
+
+  async function dismiss() {
+    setVisible(false);
+    await AsyncStorage.setItem(storageKey, "dismissed");
+  }
+
+  if (!visible) return null;
+
+  return (
+    <View style={[styles.banner, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44" }]}>
+      <Ionicons name={icon} size={18} color={colors.primary} style={{ marginTop: 1 }} />
+      <Text style={[styles.text, { color: colors.text }]}>{text}</Text>
+      <TouchableOpacity onPress={dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Ionicons name="close" size={16} color={colors.secondaryText} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  banner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  text: { flex: 1, fontSize: 13, lineHeight: 18 },
+});
+
+/** Keys used across the app — exported so Settings can reset them all. */
+export const TIP_KEYS = {
+  feedFirstPost: "@hobbily_tip_feed_first_post",
+  communityChannels: "@hobbily_tip_community_channels",
+  timeSession: "@hobbily_tip_time_session",
+};

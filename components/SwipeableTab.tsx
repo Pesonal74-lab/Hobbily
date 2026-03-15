@@ -55,11 +55,13 @@ export default function SwipeableTab({ tabIndex, backgroundColor, children }: Pr
 
   const pan = useRef(
     PanResponder.create({
-      // Only capture clearly horizontal gestures (dx dominant, dx > 15)
+      // Only capture clearly horizontal gestures (dx strictly dominant over dy)
       onMoveShouldSetPanResponderCapture: (_, g) =>
-        Math.abs(g.dx) > 15 && Math.abs(g.dy) < Math.abs(g.dx) * 0.55,
+        Math.abs(g.dx) > 20 && Math.abs(g.dy) < Math.abs(g.dx) * 0.4,
 
       onPanResponderMove: (_, g) => {
+        // Extra guard: only translate when horizontal movement is strictly dominant
+        if (Math.abs(g.dx) <= Math.abs(g.dy)) return;
         if (g.dx < 0 && hasNext) translateX.setValue(g.dx);
         if (g.dx > 0 && hasPrev) translateX.setValue(g.dx);
       },
@@ -95,7 +97,7 @@ export default function SwipeableTab({ tabIndex, backgroundColor, children }: Pr
   ).current;
 
   return (
-    <View style={{ flex: 1, overflow: "hidden", backgroundColor }}>
+    <View style={{ flex: 1, backgroundColor }}>
       <Animated.View
         style={{ flex: 1, backgroundColor, transform: [{ translateX }] }}
         {...pan.panHandlers}

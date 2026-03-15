@@ -6,7 +6,6 @@ import { useTheme } from "../../context/ThemeContext";
 export default function TabsLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  // Base tab bar height (icons + labels) + device bottom inset (Android nav bar / iPhone home indicator)
   const TAB_HEIGHT = 56 + insets.bottom;
 
   return (
@@ -23,25 +22,21 @@ export default function TabsLayout() {
           paddingBottom: insets.bottom + 6,
           paddingTop: 6,
         },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "600",
-        },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "600" },
         tabBarIcon: ({ color, size }) => {
           const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
             index: "home-outline",
-            "time-manager": "time-outline",
+            "time-manager": "calendar-outline",
             community: "chatbubbles-outline",
             opportunities: "compass-outline",
             profile: "person-outline",
           };
-          const icon = iconMap[route.name] ?? "ellipse-outline";
-          return <Ionicons name={icon} size={size} color={color} />;
+          return <Ionicons name={iconMap[route.name] ?? "ellipse-outline"} size={size} color={color} />;
         },
       })}
     >
-      <Tabs.Screen name="index" options={{ title: "Feed" }} />
-      <Tabs.Screen name="time-manager" options={{ title: "Schedule" }} />
+      <Tabs.Screen name="index" options={{ title: "Home" }} />
+      <Tabs.Screen name="time-manager" options={{ title: "Planner" }} />
       <Tabs.Screen name="community" options={{ title: "Community" }} />
       <Tabs.Screen name="opportunities" options={{ title: "Explore" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />

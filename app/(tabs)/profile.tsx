@@ -1,14 +1,3 @@
-/**
- * Profile screen
- * Users can edit their username, age, bio, and hobby tags.
- * Changes are saved to AsyncStorage via ProfileContext.
- * The dark/light mode toggle is also here.
- *
- * Two-press tag deletion:
- *   First tap  → chip turns red (pending delete)
- *   Second tap → chip is removed
- *   Tapping a different chip → resets the pending state
- */
 import {
   View,
   ScrollView,
@@ -16,28 +5,242 @@ import {
   Text,
   TextInput,
   Pressable,
-  Image,
   TouchableOpacity,
+  Image,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
+import { useProgress } from "../../context/ProgressContext";
+import { useTime } from "../../context/TimeContext";
+import { useAuth } from "../../context/AuthContext";
 import InputField from "../../components/InputField";
 import TagChip from "../../components/TagChip";
 import ConfirmModal from "../../components/ConfirmModal";
 import SwipeableTab from "../../components/SwipeableTab";
+import { TIP_KEYS } from "../../components/TipBanner";
+import { Achievement } from "../../types/Progress";
+
+// ── Achievement definitions (mirrors ProgressContext) ─────────────────────────
+const ALL_ACHIEVEMENT_DEFS = [
+  { id: "first_session",  title: "First Step",     description: "Complete your first session",    icon: "footsteps-outline" },
+  { id: "streak_3",       title: "3-Day Streak",   description: "Practice 3 days in a row",       icon: "flame-outline" },
+  { id: "streak_7",       title: "Week Warrior",   description: "7-day streak!",                  icon: "trophy-outline" },
+  { id: "sessions_10",    title: "Dedicated",      description: "Complete 10 sessions",           icon: "star-outline" },
+  { id: "minutes_300",    title: "Five Hours",     description: "5+ hours of practice total",     icon: "time-outline" },
+  { id: "streak_30",      title: "Month Master",   description: "30-day streak!",                 icon: "medal-outline" },
+  { id: "sessions_50",    title: "Committed",      description: "Complete 50 sessions",           icon: "ribbon-outline" },
+];
+
+// ── AchievementTile ───────────────────────────────────────────────────────────
+function AchievementTile({
+  def,
+  earned,
+  colors,
+}: {
+  def: typeof ALL_ACHIEVEMENT_DEFS[0];
+  earned: Achievement | undefined;
+  colors: any;
+}) {
+  return (
+    <View
+      style={[
+        styles.achieveTile,
+        {
+          backgroundColor: earned ? colors.primary : colors.card,
+          borderColor: earned ? colors.primary : colors.border,
+          opacity: earned ? 1 : 0.5,
+        },
+      ]}
+    >
+      <Ionicons
+        name={def.icon as any}
+        size={28}
+        color={earned ? "#fff" : colors.secondaryText}
+      />
+      <Text
+        style={[styles.achieveTitle, { color: earned ? "#fff" : colors.text }]}
+        numberOfLines={1}
+      >
+        {def.title}
+      </Text>
+      <Text
+        style={[styles.achieveDesc, { color: earned ? "rgba(255,255,255,0.8)" : colors.secondaryText }]}
+        numberOfLines={2}
+      >
+        {def.description}
+      </Text>
+      {earned && (
+        <Text style={styles.achieveDate}>{earned.earnedAt}</Text>
+      )}
+    </View>
+  );
+}
+
+// ── ToggleRow ─────────────────────────────────────────────────────────────────
+function ToggleRow({
+  label,
+  sublabel,
+  value,
+  onToggle,
+  colors,
+}: {
+  label: string;
+  sublabel?: string;
+  value: boolean;
+  onToggle: () => void;
+  colors: any;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.toggleLabel, { color: colors.text }]}>{label}</Text>
+        {sublabel ? (
+          <Text style={[styles.toggleSub, { color: colors.secondaryText }]}>{sublabel}</Text>
+        ) : null}
+      </View>
+      <View
+        style={[
+          styles.toggleTrack,
+          { backgroundColor: value ? colors.primary : colors.border },
+        ]}
+      >
+        <View
+          style={[
+            styles.toggleThumb,
+            { transform: [{ translateX: value ? 20 : 2 }] },
+          ]}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── DeleteAccountModal ────────────────────────────────────────────────────────
+function DeleteAccountModal({
+  visible,
+  onCancel,
+  onConfirm,
+  colors,
+}: {
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+  colors: any;
+}) {
+  const [checked, setChecked] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const canDelete = checked && confirmText.trim() === "DELETE";
+
+  async function handleDelete() {
+    setLoading(true);
+    await onConfirm();
+    setLoading(false);
+  }
+
+  // Reset state whenever modal opens
+  function handleCancel() {
+    setChecked(false);
+    setConfirmText("");
+    onCancel();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.deleteModal, { backgroundColor: colors.card, borderColor: "#ef4444" }]}>
+          <Ionicons name="warning-outline" size={36} color="#ef4444" style={{ alignSelf: "center" }} />
+          <Text style={[styles.deleteTitle, { color: colors.text }]}>Delete Account</Text>
+          <Text style={[styles.deleteBody, { color: colors.secondaryText }]}>
+            This will permanently delete your profile, progress, and all your data. This cannot be undone.
+          </Text>
+
+          {/* Step 1: checkbox */}
+          <TouchableOpacity style={styles.checkRow} onPress={() => setChecked(!checked)} activeOpacity={0.7}>
+            <View style={[styles.checkbox, { borderColor: "#ef4444", backgroundColor: checked ? "#ef4444" : "transparent" }]}>
+              {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </View>
+            <Text style={[styles.checkLabel, { color: colors.text }]}>
+              I understand this is permanent and cannot be undone.
+            </Text>
+          </TouchableOpacity>
+
+          {/* Step 2: type DELETE */}
+          <Text style={[styles.deleteHint, { color: colors.secondaryText }]}>
+            Type <Text style={{ color: "#ef4444", fontWeight: "700" }}>DELETE</Text> to confirm:
+          </Text>
+          <TextInput
+            style={[styles.deleteInput, { color: colors.text, borderColor: confirmText === "DELETE" ? "#ef4444" : colors.border, backgroundColor: colors.inputBackground }]}
+            value={confirmText}
+            onChangeText={setConfirmText}
+            autoCapitalize="characters"
+            placeholder="DELETE"
+            placeholderTextColor={colors.secondaryText}
+          />
+
+          <View style={styles.deleteActions}>
+            <TouchableOpacity
+              style={[styles.deleteCancelBtn, { borderColor: colors.border }]}
+              onPress={handleCancel}
+              disabled={loading}
+            >
+              <Text style={[styles.deleteCancelText, { color: colors.text }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteConfirmBtn, { backgroundColor: canDelete ? "#ef4444" : colors.border }]}
+              onPress={handleDelete}
+              disabled={!canDelete || loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.deleteConfirmText}>Delete</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+type TabId = "edit" | "badges" | "settings";
 
 export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const { profile, saveProfile } = useProfile();
+  const { currentStreak, longestStreak, totalSessions, totalMinutes, achievements } = useProgress();
+  const { dailyReminderEnabled, setDailyReminderEnabled } = useTime();
+  const { signOut, deleteAccount } = useAuth();
 
+  const [activeTab, setActiveTab] = useState<TabId>("edit");
   const [draft, setDraft] = useState({ ...profile });
   const [newTag, setNewTag] = useState("");
   const [pendingTag, setPendingTag] = useState<string | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [tipsResetDone, setTipsResetDone] = useState(false);
+
+  const initials = (draft.username || "?")
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   function addHobby() {
     const tag = newTag.trim();
@@ -63,7 +266,7 @@ export default function ProfileScreen() {
 
   function requestSave() {
     const ageNum = parseInt(draft.age, 10);
-    if (isNaN(ageNum) || ageNum < 13 || ageNum > 150) {
+    if (draft.age && (isNaN(ageNum) || ageNum < 13 || ageNum > 150)) {
       setSaveError("Age must be between 13 and 150.");
       setSaveModalVisible(true);
       return;
@@ -78,140 +281,312 @@ export default function ProfileScreen() {
     await saveProfile(draft);
   }
 
+  async function handleResetTips() {
+    await AsyncStorage.multiRemove([
+      ...Object.values(TIP_KEYS),
+      "@hobbily_reminder_shown_date",
+    ]);
+    setTipsResetDone(true);
+    setTimeout(() => setTipsResetDone(false), 2000);
+  }
+
+  const practiceHours = Math.floor(totalMinutes / 60);
+  const practiceMin = totalMinutes % 60;
+  const practiceLabel =
+    totalMinutes === 0
+      ? "0 min"
+      : practiceHours > 0
+      ? `${practiceHours}h ${practiceMin}m`
+      : `${practiceMin}m`;
+
+  const TABS: { id: TabId; label: string }[] = [
+    { id: "edit", label: "Edit" },
+    { id: "badges", label: "Badges" },
+    { id: "settings", label: "Settings" },
+  ];
+
   return (
     <SwipeableTab tabIndex={4} backgroundColor={colors.background}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={toggleTheme}
-              style={[styles.themeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <Ionicons name={isDark ? "sunny-outline" : "moon-outline"} size={20} color={colors.text} />
-            </TouchableOpacity>
-            <Image
-              source={require("../../assets/images/Hobbily_Logo.png")}
-              style={styles.headerLogo}
-            />
-          </View>
+          <Image
+            source={require("../../assets/images/Hobbily_Logo.png")}
+            style={styles.headerLogo}
+          />
         </View>
 
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          contentContainerStyle={{ paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Outer Pressable clears any pending-delete tag when tapping blank space */}
-          <Pressable onPress={() => setPendingTag(null)}>
-
-            {/* Avatar card */}
-            <View style={[styles.avatarCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
-                <Text style={styles.avatarInitial}>
-                  {(draft.username || "?")[0].toUpperCase()}
-                </Text>
+          {/* Avatar hero card */}
+          <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarInitial}>{initials}</Text>
+            </View>
+            <Text style={styles.heroName}>{draft.username || "Your Name"}</Text>
+            {draft.city ? (
+              <View style={styles.heroLocationRow}>
+                <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.heroLocation}>{draft.city}</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.displayName, { color: colors.text }]}>
-                  {draft.username || "Your name"}
+            ) : null}
+            {draft.bio ? (
+              <Text style={styles.heroBio} numberOfLines={2}>{draft.bio}</Text>
+            ) : null}
+          </View>
+
+          {/* Stats row */}
+          <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {[
+              { label: "Streak", value: `${currentStreak}🔥` },
+              { label: "Best", value: `${longestStreak}d` },
+              { label: "Sessions", value: `${totalSessions}` },
+              { label: "Practice", value: practiceLabel },
+            ].map((s) => (
+              <View key={s.label} style={styles.statItem}>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{s.value}</Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Tab selector */}
+          <View style={[styles.tabSelector, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {TABS.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.tabPill,
+                  activeTab === t.id && { backgroundColor: colors.primary },
+                ]}
+                onPress={() => setActiveTab(t.id)}
+              >
+                <Text
+                  style={[
+                    styles.tabPillText,
+                    { color: activeTab === t.id ? "#fff" : colors.secondaryText },
+                  ]}
+                >
+                  {t.label}
                 </Text>
-                {draft.age ? (
-                  <Text style={[styles.displayAge, { color: colors.secondaryText }]}>
-                    Age {draft.age}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* ── Edit tab ─────────────────────────────────────────────────── */}
+          {activeTab === "edit" && (
+            <Pressable onPress={() => setPendingTag(null)} style={{ padding: 16, paddingTop: 8 }}>
+              <InputField
+                label="Username"
+                value={draft.username}
+                onChangeText={(username) => setDraft({ ...draft, username })}
+                containerStyle={{ backgroundColor: "transparent" }}
+                labelStyle={{ color: colors.text }}
+                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+              />
+              <InputField
+                label="Age"
+                value={draft.age}
+                onChangeText={(age) => setDraft({ ...draft, age })}
+                containerStyle={{ backgroundColor: "transparent" }}
+                labelStyle={{ color: colors.text }}
+                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+                keyboardType="number-pad"
+              />
+              <InputField
+                label="City"
+                value={draft.city}
+                onChangeText={(city) => setDraft({ ...draft, city })}
+                containerStyle={{ backgroundColor: "transparent" }}
+                labelStyle={{ color: colors.text }}
+                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+              />
+              <InputField
+                label="About Me"
+                value={draft.bio}
+                onChangeText={(bio) => setDraft({ ...draft, bio })}
+                containerStyle={{ backgroundColor: "transparent" }}
+                labelStyle={{ color: colors.text }}
+                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
+                multiline
+              />
+
+              <Text style={[styles.label, { color: colors.text, marginTop: 4 }]}>My Hobbies</Text>
+              <View style={[styles.hobbyInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+                <TextInput
+                  style={[styles.hobbyInput, { color: colors.text }]}
+                  placeholder="Add a hobby..."
+                  placeholderTextColor={colors.secondaryText}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  onSubmitEditing={addHobby}
+                />
+                <TouchableOpacity
+                  onPress={addHobby}
+                  style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              {draft.hobbies.length > 0 ? (
+                <>
+                  <Text style={[styles.hint, { color: colors.secondaryText }]}>
+                    Tap once to select for removal, tap again to delete.
                   </Text>
-                ) : null}
-                {draft.bio ? (
-                  <Text style={[styles.displayBio, { color: colors.secondaryText }]} numberOfLines={1}>
-                    {draft.bio}
-                  </Text>
-                ) : null}
+                  <View style={styles.tagWrap}>
+                    {draft.hobbies.map((tag) => (
+                      <TagChip
+                        key={tag}
+                        label={tag}
+                        textColor="#fff"
+                        backgroundColor={colors.primary}
+                        isPendingDelete={pendingTag === tag}
+                        onPress={() => handleTagPress(tag)}
+                      />
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <Text style={[styles.hint, { color: colors.secondaryText }]}>
+                  No hobbies added yet — add some above!
+                </Text>
+              )}
+
+              <TouchableOpacity
+                onPress={requestSave}
+                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              >
+                <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+            </Pressable>
+          )}
+
+          {/* ── Badges tab ───────────────────────────────────────────────── */}
+          {activeTab === "badges" && (
+            <View style={{ padding: 16, paddingTop: 8 }}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Achievements</Text>
+              <Text style={[styles.sectionSub, { color: colors.secondaryText }]}>
+                {achievements.length} / {ALL_ACHIEVEMENT_DEFS.length} earned
+              </Text>
+              <View style={styles.achieveGrid}>
+                {ALL_ACHIEVEMENT_DEFS.map((def) => {
+                  const earned = achievements.find((a) => a.id === def.id);
+                  return (
+                    <AchievementTile key={def.id} def={def} earned={earned} colors={colors} />
+                  );
+                })}
               </View>
             </View>
+          )}
 
-            <InputField
-              label="Username"
-              value={draft.username}
-              onChangeText={(username) => setDraft({ ...draft, username })}
-              containerStyle={{ backgroundColor: "transparent" }}
-              labelStyle={{ color: colors.text }}
-              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-            />
-
-            <InputField
-              label="Age"
-              value={draft.age}
-              onChangeText={(age) => setDraft({ ...draft, age })}
-              containerStyle={{ backgroundColor: "transparent" }}
-              labelStyle={{ color: colors.text }}
-              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-              keyboardType="number-pad"
-            />
-
-            <InputField
-              label="About Me"
-              value={draft.bio}
-              onChangeText={(bio) => setDraft({ ...draft, bio })}
-              containerStyle={{ backgroundColor: "transparent" }}
-              labelStyle={{ color: colors.text }}
-              inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-              multiline
-            />
-
-            <Text style={[styles.label, { color: colors.text, marginTop: 4 }]}>My Hobbies</Text>
-
-            <View style={[styles.hobbyInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.hobbyInput, { color: colors.text }]}
-                placeholder="Add a hobby..."
-                placeholderTextColor={colors.secondaryText}
-                value={newTag}
-                onChangeText={setNewTag}
-                onSubmitEditing={addHobby}
+          {/* ── Settings tab ─────────────────────────────────────────────── */}
+          {activeTab === "settings" && (
+            <View style={{ padding: 16, paddingTop: 8 }}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+              <ToggleRow
+                label="Dark Mode"
+                sublabel={isDark ? "Currently dark" : "Currently light"}
+                value={isDark}
+                onToggle={toggleTheme}
+                colors={colors}
               />
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Notifications</Text>
+              <ToggleRow
+                label="Daily Practice Reminder"
+                sublabel="Get a reminder to practice each day"
+                value={dailyReminderEnabled}
+                onToggle={() => setDailyReminderEnabled(!dailyReminderEnabled)}
+                colors={colors}
+              />
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Tips & Hints</Text>
               <TouchableOpacity
-                onPress={addHobby}
-                style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}
+                style={[styles.actionRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={handleResetTips}
+                activeOpacity={0.7}
               >
-                <Ionicons name="add" size={20} color="#fff" />
+                <Ionicons name="refresh-outline" size={18} color={colors.primary} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.actionRowLabel, { color: colors.text }]}>
+                    Reset dismissed tips
+                  </Text>
+                  <Text style={[styles.actionRowSub, { color: colors.secondaryText }]}>
+                    Show all tips and daily banners again
+                  </Text>
+                </View>
+                {tipsResetDone && (
+                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                )}
+              </TouchableOpacity>
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Account</Text>
+              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="mail-outline" size={18} color={colors.secondaryText} />
+                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Email</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>
+                    {profile.email || "Not set"}
+                  </Text>
+                </View>
+                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.infoRow}>
+                  <Ionicons name="person-outline" size={18} color={colors.secondaryText} />
+                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Username</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{profile.username || "Not set"}</Text>
+                </View>
+                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.infoRow}>
+                  <Ionicons name="location-outline" size={18} color={colors.secondaryText} />
+                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>City</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{profile.city || "Not set"}</Text>
+                </View>
+              </View>
+
+              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="cloud-outline" size={18} color={colors.secondaryText} />
+                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Storage</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>Firebase Cloud</Text>
+                </View>
+                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.infoRow}>
+                  <Ionicons name="information-circle-outline" size={18} color={colors.secondaryText} />
+                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Version</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>1.1.0</Text>
+                </View>
+              </View>
+
+              {/* Log out */}
+              <TouchableOpacity
+                style={[styles.logoutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => setLogoutModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="log-out-outline" size={20} color={colors.text} />
+                <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
+              </TouchableOpacity>
+
+              {/* Delete account */}
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={() => setDeleteModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                <Text style={styles.deleteBtnText}>Delete Account</Text>
               </TouchableOpacity>
             </View>
-
-            {draft.hobbies.length > 0 ? (
-              <>
-                <Text style={[styles.hint, { color: colors.secondaryText }]}>
-                  Tap once to select for removal, tap again to delete.
-                </Text>
-                <View style={styles.tagWrap}>
-                  {draft.hobbies.map((tag) => (
-                    <TagChip
-                      key={tag}
-                      label={tag}
-                      textColor={colors.text}
-                      isPendingDelete={pendingTag === tag}
-                      onPress={() => handleTagPress(tag)}
-                    />
-                  ))}
-                </View>
-              </>
-            ) : (
-              <Text style={[styles.hint, { color: colors.secondaryText }]}>
-                No hobbies added yet — add some above!
-              </Text>
-            )}
-
-            <TouchableOpacity
-              onPress={requestSave}
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-            >
-              <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.saveBtnText}>Save Changes</Text>
-            </TouchableOpacity>
-
-          </Pressable>
+          )}
         </ScrollView>
       </SafeAreaView>
 
+      {/* Save confirm */}
       <ConfirmModal
         visible={saveModalVisible}
         title={saveError ? "Cannot Save" : "Save Changes?"}
@@ -221,6 +596,29 @@ export default function ProfileScreen() {
         dangerous={false}
         onConfirm={handleConfirmSave}
         onCancel={() => setSaveModalVisible(false)}
+      />
+
+      {/* Log out confirm */}
+      <ConfirmModal
+        visible={logoutModalVisible}
+        title="Log Out?"
+        message="You'll need to sign in again to access your account."
+        confirmLabel="Log Out"
+        cancelLabel="Cancel"
+        dangerous={false}
+        onConfirm={async () => { setLogoutModalVisible(false); await signOut(); }}
+        onCancel={() => setLogoutModalVisible(false)}
+      />
+
+      {/* Delete account 2-step modal */}
+      <DeleteAccountModal
+        visible={deleteModalVisible}
+        onCancel={() => setDeleteModalVisible(false)}
+        onConfirm={async () => {
+          setDeleteModalVisible(false);
+          await deleteAccount();
+        }}
+        colors={colors}
       />
     </SwipeableTab>
   );
@@ -237,36 +635,70 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerLogo: { width: 36, height: 36, resizeMode: "contain" },
-  themeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+
+  // Hero
+  heroCard: {
     alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  avatarCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 16,
-    gap: 14,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 20,
   },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 10,
   },
-  avatarInitial: { color: "#fff", fontSize: 26, fontWeight: "800" },
-  displayName: { fontSize: 18, fontWeight: "700", marginBottom: 2 },
-  displayAge: { fontSize: 13 },
-  displayBio: { fontSize: 13, marginTop: 2 },
+  avatarInitial: { color: "#fff", fontSize: 28, fontWeight: "800" },
+  heroName: { color: "#fff", fontSize: 20, fontWeight: "800", marginBottom: 4 },
+  heroLocationRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 4 },
+  heroLocation: { color: "rgba(255,255,255,0.8)", fontSize: 13 },
+  heroBio: { color: "rgba(255,255,255,0.75)", fontSize: 13, textAlign: "center", marginTop: 4 },
+
+  // Stats
+  statsRow: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRightWidth: 1,
+    borderRightColor: "transparent",
+  },
+  statValue: { fontSize: 18, fontWeight: "800" },
+  statLabel: { fontSize: 11, marginTop: 2 },
+
+  // Tab selector
+  tabSelector: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 4,
+    gap: 4,
+  },
+  tabPill: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  tabPillText: { fontSize: 14, fontWeight: "700" },
+
+  // Edit tab
   label: { fontWeight: "700", fontSize: 15, marginBottom: 8 },
   hobbyInputRow: {
     flexDirection: "row",
@@ -297,4 +729,155 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
+  // Badges tab
+  sectionTitle: { fontSize: 17, fontWeight: "800", marginBottom: 4 },
+  sectionSub: { fontSize: 13, marginBottom: 14 },
+  achieveGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  achieveTile: {
+    width: "47%",
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  achieveTitle: { fontSize: 13, fontWeight: "700", textAlign: "center" },
+  achieveDesc: { fontSize: 11, textAlign: "center" },
+  achieveDate: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 2 },
+
+  // Settings tab
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  toggleLabel: { fontSize: 15, fontWeight: "600" },
+  toggleSub: { fontSize: 12, marginTop: 2 },
+  toggleTrack: {
+    width: 46,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: "center",
+  },
+  toggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  infoCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  infoLabel: { fontSize: 14, width: 70 },
+  infoValue: { fontSize: 14, fontWeight: "600", flex: 1, textAlign: "right" },
+  infoDivider: { height: 1, marginLeft: 14 },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  actionRowLabel: { fontSize: 15, fontWeight: "600" },
+  actionRowSub: { fontSize: 12, marginTop: 2 },
+
+  // Log out / Delete
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 20,
+  },
+  logoutText: { fontSize: 16, fontWeight: "700" },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  deleteBtnText: { color: "#ef4444", fontSize: 14, fontWeight: "600" },
+
+  // Delete account modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  deleteModal: {
+    width: "100%",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 24,
+    gap: 12,
+  },
+  deleteTitle: { fontSize: 20, fontWeight: "800", textAlign: "center", marginTop: 4 },
+  deleteBody: { fontSize: 14, lineHeight: 20, textAlign: "center" },
+  checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkLabel: { flex: 1, fontSize: 14, lineHeight: 20 },
+  deleteHint: { fontSize: 13, marginTop: 4 },
+  deleteInput: {
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 2,
+  },
+  deleteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  deleteCancelBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  deleteCancelText: { fontSize: 15, fontWeight: "600" },
+  deleteConfirmBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  deleteConfirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

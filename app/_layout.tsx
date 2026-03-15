@@ -1,28 +1,40 @@
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
-import { ProfileProvider } from "../context/ProfileContext";
-import { PostsProvider } from "../context/PostsContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
+import { ProfileProvider, useProfile } from "../context/ProfileContext";
+import { PostsProvider, usePosts } from "../context/PostsContext";
 import { TimeProvider } from "../context/TimeContext";
 import { CommunityProvider } from "../context/CommunityContext";
-import { usePosts } from "../context/PostsContext";
-import { View, Image, Animated, StyleSheet } from "react-native";
+import { ProgressProvider } from "../context/ProgressContext";
+import { Image, Animated, StyleSheet } from "react-native";
 import { useEffect, useRef, useState } from "react";
 
 function AppShell() {
   const { isLoading } = usePosts();
+  const { profile, isLoaded } = useProfile();
+  const { isAuthLoaded, user } = useAuth();
   const { colors } = useTheme();
   const opacity = useRef(new Animated.Value(1)).current;
   const [showSplash, setShowSplash] = useState(true);
+  const redirected = useRef(false);
+
+  // Wait for Firebase auth state + Firestore profile load
+  const allReady = isAuthLoaded && isLoaded && !isLoading;
 
   useEffect(() => {
-    if (!isLoading) {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 700,
-        useNativeDriver: true,
-      }).start(() => setShowSplash(false));
-    }
-  }, [isLoading]);
+    if (!allReady) return;
+    Animated.timing(opacity, { toValue: 0, duration: 600, useNativeDriver: true }).start(() => {
+      setShowSplash(false);
+      if (!redirected.current) {
+        redirected.current = true;
+        if (!user || !profile.hasOnboarded) {
+          // Not logged in OR logged in but hasn't finished onboarding
+          router.replace("/onboarding" as any);
+        }
+        // else: authenticated + onboarded → default route (tabs) renders automatically
+      }
+    });
+  }, [allReady]);
 
   return (
     <>
@@ -32,10 +44,7 @@ function AppShell() {
           style={[styles.splash, { backgroundColor: colors.background, opacity }]}
           pointerEvents="none"
         >
-          <Image
-            source={require("../assets/images/Hobbily_Logo.png")}
-            style={styles.splashLogo}
-          />
+          <Image source={require("../assets/images/Hobbily_Logo.png")} style={styles.splashLogo} />
         </Animated.View>
       )}
     </>
@@ -44,29 +53,25 @@ function AppShell() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <ProfileProvider>
-        <PostsProvider>
-          <TimeProvider>
-            <CommunityProvider>
-              <AppShell />
-            </CommunityProvider>
-          </TimeProvider>
-        </PostsProvider>
-      </ProfileProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <ProfileProvider>
+          <PostsProvider>
+            <TimeProvider>
+              <CommunityProvider>
+                <ProgressProvider>
+                  <AppShell />
+                </ProgressProvider>
+              </CommunityProvider>
+            </TimeProvider>
+          </PostsProvider>
+        </ProfileProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  splash: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  splashLogo: {
-    width: 220,
-    height: 220,
-    resizeMode: "contain",
-  },
+  splash: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" },
+  splashLogo: { width: 200, height: 200, resizeMode: "contain" },
 });

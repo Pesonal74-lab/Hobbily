@@ -14,6 +14,8 @@ import { Text, Pressable, StyleSheet, View } from "react-native";
 type Props = {
   label: string;
   textColor: string;
+  /** Background color for the chip in its default (non-pending) state */
+  backgroundColor?: string;
   /** True when this chip is in the "about to be deleted" state (first press done) */
   isPendingDelete?: boolean;
   /** Called on every press — the parent decides the behaviour based on current state */
@@ -23,6 +25,7 @@ type Props = {
 export default function TagChip({
   label,
   textColor,
+  backgroundColor,
   isPendingDelete = false,
   onPress,
 }: Props) {
@@ -31,14 +34,14 @@ export default function TagChip({
       onPress={onPress}
       style={[
         styles.chip,
-        // Switch to a red background on first press to signal "tap again to confirm delete"
-        isPendingDelete ? styles.chipPending : styles.chipDefault,
+        isPendingDelete
+          ? styles.chipPending
+          : { backgroundColor: backgroundColor ?? "#ddd", borderColor: backgroundColor ?? "#999" },
       ]}
     >
       <View style={styles.inner}>
-        {/* × prefix shown only in pending-delete state so the intent is unambiguous */}
         {isPendingDelete && <Text style={styles.deleteIcon}>× </Text>}
-        <Text style={{ color: isPendingDelete ? "#fff" : textColor }}>{label}</Text>
+        <Text style={{ color: isPendingDelete ? "#fff" : textColor, fontWeight: "600", fontSize: 13 }}>{label}</Text>
       </View>
     </Pressable>
   );

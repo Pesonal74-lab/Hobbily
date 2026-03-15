@@ -16,8 +16,14 @@ An app that helps teens manage their time, communicate with others about shared 
 
 ## Features
 
+### Authentication & Onboarding (OOBE)
+- Sign up or sign in with email and password (Firebase Auth)
+- Full Windows-style OOBE flow: create account → pick hobbies → set free time → enter name/bio → done
+- Returning users are automatically skipped past account creation
+- Age validation (13–150) with inline error and red border
+
 ### Feed
-- Scrollable community post feed, newest first
+- Scrollable community post feed, newest first (real-time via Firestore)
 - Create posts with a title, body, and optional tags
 - Edit your own posts — shows a `✎ edited` badge
 - Delete posts with a custom confirmation modal
@@ -42,6 +48,7 @@ An app that helps teens manage their time, communicate with others about shared 
 
 ### Community
 - 10 predefined hobby channels: Photography, Music, Sports, Coding, Drawing & Art, Cooking, Gaming, Reading, Dance, Film & Video
+- Real-time messages synced via Firestore (`onSnapshot`)
 - Search channels and filter between "All" and "My Channels"
 - Channel suggestions based on your profile hobbies
 - Join / leave channels; send and delete messages
@@ -55,17 +62,25 @@ An app that helps teens manage their time, communicate with others about shared 
 - Tap any card for full details: highlights, location, age range, cost, and direct contact / registration links
 
 ### Profile
-- Edit username, age (validated 13–150), and bio
-- Manage hobby tags with a two-press delete system
-- Avatar card showing your initial, name, and bio
-- Light/dark mode toggle (sun/moon icon button)
-- All changes confirmed with a modal before saving
+- Hero card with initials avatar, name, city, and bio
+- Stats row: current streak 🔥, best streak, total sessions, total practice time
+- **Edit tab** — username, age (validated 13–150), city, bio, hobby tags (blue, two-press delete)
+- **Badges tab** — 7 achievements, earned ones shown in solid blue; locked ones faded
+- **Settings tab** — dark mode toggle, daily reminder toggle, account info card
+- **Log Out** button with confirmation modal
+- **Delete Account** — 2-step confirmation: check "I understand" + type `DELETE`; removes all Firestore data and the Firebase Auth account
+- **Reset dismissed tips** — restores all "don't show again" tip banners and the daily reminder banner
 
-### Weather
-- Current conditions with temperature and description
-- 3-day forecast
-- City search with autocomplete
-- Last selected city persisted across sessions
+### Progress & Streaks
+- Current streak, longest streak, total sessions, and total practice minutes — all persisted to Firestore
+- 7 achievements auto-unlocked as you hit milestones
+- **Streak Freeze** — one freeze per week; automatically granted on session record; prevents streak loss for one missed day
+
+### Tips & "Don't Show Again"
+- Feed tip: share your first post
+- Community tip: join channels matching your hobbies
+- All tips are permanently dismissible with one tap
+- Reset all tips from Profile → Settings → Tips & Hints
 
 ### UI / UX
 - **Hobbily colour palette:** coral `#fc7273`, lavender `#cacef2`, navy `#032068`, black `#000000`
@@ -74,6 +89,7 @@ An app that helps teens manage their time, communicate with others about shared 
 - Custom `ConfirmModal` — themed, replaces all system alerts
 - Light and dark mode, follows system preference or toggled manually
 - Safe area handling throughout — no content hidden behind notches or status bars
+- Animated splash screen fades out once all data has loaded
 
 ---
 
@@ -84,12 +100,13 @@ An app that helps teens manage their time, communicate with others about shared 
 | Framework | [Expo](https://expo.dev) ~54 / React Native 0.81 |
 | Language | TypeScript ~5.9 |
 | Routing | [Expo Router](https://expo.github.io/router/) v6 (file-based) |
+| Auth | [Firebase Auth](https://firebase.google.com/products/auth) (email/password) |
+| Database | [Cloud Firestore](https://firebase.google.com/products/firestore) (real-time) |
+| Local storage | [`@react-native-async-storage/async-storage`](https://react-native-async-storage.github.io/async-storage/) (tips, tasks, channel prefs) |
 | State | React Context API + `useState` / `useEffect` |
-| Persistence | [`@react-native-async-storage/async-storage`](https://react-native-async-storage.github.io/async-storage/) |
 | Animation | React Native `Animated` API + `PanResponder` |
 | Weather API | [OpenWeatherMap](https://openweathermap.org/api) |
 | Icons | `@expo/vector-icons` (Ionicons) |
-| Future backend | [Appwrite](https://appwrite.io) (planned for Phase 2) |
 
 ---
 
@@ -97,44 +114,52 @@ An app that helps teens manage their time, communicate with others about shared 
 
 ```
 app/
-├── _layout.tsx              # Root layout — ThemeProvider, ProfileProvider, PostsProvider, TimeProvider, CommunityProvider
+├── _layout.tsx              # Root layout — AuthProvider, all providers, splash screen, auth gate
+├── onboarding.tsx           # Full OOBE flow (sign up/in, hobbies, free time, profile setup)
 ├── create-post.tsx          # Create post screen
 ├── edit-post/[id].tsx       # Edit post screen
 ├── post/[id].tsx            # Post detail + comments screen
 └── (tabs)/
     ├── _layout.tsx          # Bottom tab bar (5 tabs, safe-area-aware height)
-    ├── index.tsx            # Feed + weather (tab 0)
+    ├── index.tsx            # Home dashboard — streak card, tasks, quick actions (tab 0)
     ├── time-manager.tsx     # Schedule / time management (tab 1)
-    ├── community.tsx        # Hobby channels + chat (tab 2)
+    ├── community.tsx        # Hobby channels + real-time chat (tab 2)
     ├── opportunities.tsx    # Programs & clubs explorer (tab 3)
-    └── profile.tsx          # Profile editor + dark mode toggle (tab 4)
+    └── profile.tsx          # Profile editor, badges, settings, logout, delete account (tab 4)
 
 components/
 ├── SwipeableTab.tsx         # Reusable swipe-to-navigate wrapper for all tab screens
 ├── PostCard.tsx             # Feed card — edit/delete, like, share
-├── TagChip.tsx              # Tag pill (supports two-press delete)
+├── TagChip.tsx              # Tag pill (supports two-press delete, custom colour)
 ├── ConfirmModal.tsx         # Themed confirmation/error modal
+├── TipBanner.tsx            # Dismissible "don't show again" tip card + TIP_KEYS export
 ├── WeatherBox.tsx           # Weather widget with forecast and city search
 ├── InputField.tsx           # Labelled text input
 └── PrimaryButton.tsx        # Primary action button
 
 context/
+├── AuthContext.tsx           # Firebase Auth — signUp, signIn, signOut, deleteAccount
 ├── ThemeContext.tsx          # Hobbily colour tokens + light/dark toggle
-├── ProfileContext.tsx        # User profile state
-├── PostsContext.tsx          # Posts + comments + likes state
-├── TimeContext.tsx           # Tasks, hobby sessions, daily reminder state
-└── CommunityContext.tsx      # Channels, messages, joined channels state
+├── ProfileContext.tsx        # User profile state (Firestore-backed)
+├── PostsContext.tsx          # Real-time posts feed (Firestore onSnapshot)
+├── TimeContext.tsx           # Tasks, hobby sessions, daily reminder (AsyncStorage)
+├── CommunityContext.tsx      # Channels, real-time messages (Firestore), joined channels (AsyncStorage)
+└── ProgressContext.tsx       # Streaks, sessions, achievements (Firestore)
 
 services/
-├── postsService.ts          # AsyncStorage CRUD — posts, comments, likes
-├── profileService.ts        # AsyncStorage load/save for profile
+├── postsService.ts          # Firestore CRUD — posts, comments, likes
+├── profileService.ts        # Firestore load/save for profile
 └── weatherService.ts        # OpenWeatherMap API calls
+
+lib/
+└── firebase.ts              # Firebase app, Auth (AsyncStorage persistence), Firestore
 
 types/
 ├── Post.ts                  # Post and Comment types
 ├── Profile.ts               # Profile type
 ├── Task.ts                  # Task / hobby session type
-└── CommunityMessage.ts      # Channel and CommunityMessage types
+├── CommunityMessage.ts      # Channel and CommunityMessage types
+└── Progress.ts              # ProgressState and Achievement types
 ```
 
 ---
@@ -144,7 +169,7 @@ types/
 ### Prerequisites
 
 - [Node.js](https://nodejs.org) LTS
-- [Expo Go](https://expo.dev/client) on your iOS or Android device, **or** an emulator
+- [Expo Go](https://expo.dev/client) on your Android device, **or** an emulator
 
 ### Installation
 
@@ -152,6 +177,7 @@ types/
 git clone https://github.com/ChuffenMarble/Hobbily.git
 cd Hobbily
 npm install
+npx expo install firebase @react-native-async-storage/async-storage
 ```
 
 ### Environment Variables
@@ -175,30 +201,27 @@ EXPO_PUBLIC_WEATHER_API_KEY=your_openweathermap_api_key_here
 npx expo start
 ```
 
-Scan the QR code with Expo Go, or press `a` for Android emulator / `i` for iOS simulator.
+Scan the QR code with Expo Go, or press `a` for Android emulator.
 
 ---
 
 ## Architecture Notes
 
 **Data flow:**
-`AsyncStorage` ← `services/` ← `context/` ← screens & components
+`Firebase Firestore / Auth` ← `lib/firebase.ts` ← `services/` + `context/` ← screens & components
 
-- Services handle all storage I/O — swapping to a backend (Appwrite) only requires replacing service files.
-- Contexts provide optimistic in-memory state so the UI responds instantly.
-- Provider nesting: `ThemeProvider` → `ProfileProvider` → `PostsProvider` → `TimeProvider` → `CommunityProvider`.
+- **AuthContext** is the outermost provider — all other contexts depend on `useAuth()` for `user.uid`.
+- **Firestore** stores posts, profiles, progress, and community messages; real-time `onSnapshot` listeners keep the UI in sync without manual refresh.
+- **AsyncStorage** stores local-only preferences: tasks, joined channel list, and dismissed tip keys.
+- Provider order: `AuthProvider → ThemeProvider → ProfileProvider → PostsProvider → TimeProvider → CommunityProvider → ProgressProvider`.
 - Comments are soft-deleted (a `deletedAt` timestamp is set) to preserve thread structure.
 - The `SwipeableTab` component wraps every tab screen; it reads `tabIndex` to know which tabs are adjacent, captures horizontal gestures (ignoring vertical scrolls), animates a slide, then calls `router.navigate()`.
+- The splash screen fades out only once `isAuthLoaded && isLoaded && !isLoading` — preventing any flash of wrong content.
+- `deleteAccount()` removes Firestore documents first (`users/{uid}`, `progress/{uid}`), then calls Firebase `deleteUser()` — the resulting auth state change redirects automatically to onboarding.
 
 ---
 
 ## Roadmap
-
-### Phase 2 — Backend & Auth (Planned)
-- [ ] Appwrite integration (replace AsyncStorage services)
-- [ ] User authentication (sign up / log in)
-- [ ] Cloud-synced posts, comments, profiles, and community messages
-- [ ] HuggingFace AI — auto-tagging, content moderation
 
 ### Phase 3 — Social Features (Future)
 - [ ] Post search and filtering
@@ -206,18 +229,28 @@ Scan the QR code with Expo Go, or press `a` for Android emulator / `i` for iOS s
 - [ ] Push notifications for daily reminders and community activity
 - [ ] Moderation tools
 - [ ] Map view for opportunities (show nearby clubs/programs)
+- [ ] HuggingFace AI — auto-tagging, content moderation
 
 ### Completed
+- [x] Firebase Auth — email/password sign up & sign in
+- [x] Full Firestore integration — profiles, posts, community messages, progress
+- [x] Real-time community messages via Firestore `onSnapshot`
+- [x] Full OOBE onboarding flow (account → hobbies → free time → profile)
+- [x] Streak tracking with 7 achievements and streak freeze
+- [x] Log out with confirmation modal
+- [x] Delete account — 2-step confirmation (checkbox + type DELETE)
+- [x] Dismissible "don't show again" tip banners with Settings reset
 - [x] Like / reaction system (heart icon, per-user, persisted)
 - [x] Comment editing and soft-deletion
 - [x] Native share sheet integration
 - [x] Swipe navigation across all 5 tabs with slide animation
 - [x] Custom themed confirmation modals
 - [x] Schedule / time management with daily hobby reminder
-- [x] Community hobby channels with local messaging
+- [x] Community hobby channels with real-time messaging
 - [x] Opportunities explorer (12 real Israeli/Palestinian programs)
 - [x] Hobbily brand colour palette
 - [x] Android navigation bar safe-area fix for tab bar
+- [x] Animated splash screen
 
 ---
 
