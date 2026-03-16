@@ -68,49 +68,27 @@ function ChannelCard({ channel, isJoined, lastMessage, colors, onPress, onJoinTo
       onPress={onPress}
       style={({ pressed }) => [
         styles.channelCard,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        { backgroundColor: colors.secondary, borderColor: colors.border },
         pressed && { opacity: 0.85 },
       ]}
     >
-      <View style={[styles.channelIcon, { backgroundColor: colors.primary + "18" }]}>
-        <Ionicons name={channel.icon as any} size={22} color={colors.primary} />
-      </View>
-      <View style={styles.channelInfo}>
-        <View style={styles.channelTop}>
-          <Text style={[styles.channelName, { color: colors.text }]}>{channel.name}</Text>
-          {isJoined && (
-            <View style={[styles.joinedBadge, { backgroundColor: colors.primary + "18" }]}>
-              <Text style={[styles.joinedBadgeText, { color: colors.primary }]}>Joined</Text>
-            </View>
-          )}
-        </View>
-        {lastMessage ? (
-          <Text style={[styles.channelPreview, { color: colors.secondaryText }]} numberOfLines={1}>
-            <Text style={{ fontWeight: "600" }}>{lastMessage.author}: </Text>
-            {lastMessage.text}
-          </Text>
-        ) : (
-          <Text style={[styles.channelDesc, { color: colors.secondaryText }]} numberOfLines={1}>
-            {channel.description}
-          </Text>
-        )}
-        <Text style={[styles.channelMembers, { color: colors.tabBarInactive }]}>
-          <Ionicons name="people-outline" size={11} /> {channel.members.toLocaleString()} members
-        </Text>
-      </View>
+      <Text style={[styles.channelName, { color: colors.accent, flex: 1 }]} numberOfLines={1}>
+        {channel.name}
+      </Text>
+      {isJoined && (
+        <View style={[styles.joinedDot, { backgroundColor: colors.success }]} />
+      )}
       <TouchableOpacity
         onPress={(e) => { e.stopPropagation(); onJoinToggle(); }}
-        style={[
-          styles.joinBtn,
-          isJoined
-            ? { backgroundColor: colors.secondary, borderColor: colors.border }
-            : { backgroundColor: colors.primary },
-        ]}
+        style={[styles.joinSmallChip, { backgroundColor: isJoined ? colors.border : colors.primary }]}
       >
-        <Text style={[styles.joinBtnText, { color: isJoined ? colors.text : "#fff" }]}>
+        <Text style={[styles.joinSmallChipText, { color: isJoined ? colors.text : "#fff" }]}>
           {isJoined ? "Leave" : "Join"}
         </Text>
       </TouchableOpacity>
+      <View style={[styles.chevronCircle, { backgroundColor: colors.primary }]}>
+        <Ionicons name="chevron-forward" size={16} color="#fff" />
+      </View>
     </Pressable>
   );
 }
@@ -218,9 +196,9 @@ function ChannelView({ channel, colors, onBack }: ChannelViewProps) {
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       {/* Chat header */}
-      <SafeAreaView edges={["top"]} style={[styles.chatHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
+      <SafeAreaView edges={["top"]} style={[styles.chatHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={onBack} style={[styles.backBtn, { borderColor: colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }]}>
+          <Text style={[{ color: colors.primary, fontWeight: "600", fontSize: 13 }]}>Back</Text>
         </TouchableOpacity>
         <View style={[styles.chatHeaderIcon, { backgroundColor: colors.primary + "18" }]}>
           <Ionicons name={channel.icon as any} size={18} color={colors.primary} />
@@ -319,28 +297,18 @@ export default function CommunityScreen() {
   }
 
   return (
-    <SwipeableTab tabIndex={2} backgroundColor={colors.background}>
+    <SwipeableTab tabIndex={1} backgroundColor={colors.background}>
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Community</Text>
-          <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
-            Connect with teens who share your hobbies
-          </Text>
-        </View>
-      </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <TipBanner
-          storageKey={TIP_KEYS.communityChannels}
-          text="Join channels that match your hobbies to chat with others who share your interests!"
-          icon="people-outline"
-          colors={colors}
-        />
+        {/* Title */}
+        <View style={styles.titleRow}>
+          <Text style={[styles.headerTitle, { color: colors.primary }]}>Communities</Text>
+        </View>
+
         {/* Search bar */}
         <View style={styles.searchWrap}>
-          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.searchBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
             <Ionicons name="search-outline" size={18} color={colors.secondaryText} style={{ marginRight: 8 }} />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
@@ -357,41 +325,7 @@ export default function CommunityScreen() {
           </View>
         </View>
 
-        {/* Profile hobby suggestions */}
-        {profile.hobbies.length > 0 && (
-          <View style={styles.suggestSection}>
-            <Text style={[styles.suggestLabel, { color: colors.secondaryText }]}>
-              Channels matching your hobbies
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
-              {profile.hobbies.map((hobby) => {
-                const match = channels.find((c) =>
-                  c.name.toLowerCase().includes(hobby.toLowerCase()) ||
-                  hobby.toLowerCase().includes(c.id.toLowerCase())
-                );
-                if (!match) return null;
-                const joined = joinedChannelIds.includes(match.id);
-                return (
-                  <TouchableOpacity
-                    key={match.id}
-                    onPress={() => setActiveChannel(match)}
-                    style={[
-                      styles.suggestChip,
-                      { backgroundColor: joined ? colors.primary : colors.card, borderColor: joined ? colors.primary : colors.border },
-                    ]}
-                  >
-                    <Ionicons name={match.icon as any} size={14} color={joined ? "#fff" : colors.primary} style={{ marginRight: 4 }} />
-                    <Text style={{ color: joined ? "#fff" : colors.text, fontWeight: "600", fontSize: 13 }}>
-                      {match.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Filter chips */}
+        {/* Filter row */}
         <View style={styles.filterRow}>
           {(["all", "mine"] as const).map((f) => (
             <TouchableOpacity
@@ -404,7 +338,7 @@ export default function CommunityScreen() {
               ]}
             >
               <Text style={[styles.filterChipText, { color: filter === f ? "#fff" : colors.secondaryText }]}>
-                {f === "all" ? "All Channels" : `My Channels (${joinedChannelIds.length})`}
+                {f === "all" ? "All" : `Mine (${joinedChannelIds.length})`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -418,16 +352,9 @@ export default function CommunityScreen() {
               <Text style={[styles.emptyTitle, { color: colors.text }]}>
                 {filter === "mine" ? "No channels joined yet" : "No results"}
               </Text>
-              <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>
-                {filter === "mine"
-                  ? "Browse all channels and tap Join to get started."
-                  : "Try a different search term."}
-              </Text>
-              {filter === "mine" && (
-                <TouchableOpacity onPress={() => setFilter("all")} style={[styles.emptyBtn, { backgroundColor: colors.primary }]}>
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Browse All</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity onPress={() => setFilter("all")} style={[styles.emptyBtn, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Browse All</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             displayed.map((ch) => (
@@ -455,14 +382,22 @@ export default function CommunityScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
+  titleRow: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
+    paddingTop: 20,
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: "#1B2D6B",
+    marginHorizontal: 16,
+    marginBottom: 4,
   },
-  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, marginTop: 2 },
-  searchWrap: { paddingHorizontal: 16, paddingTop: 14 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+    textDecorationStyle: "solid",
+  },
+  searchWrap: { paddingHorizontal: 16, paddingTop: 12 },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -472,66 +407,43 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   searchInput: { flex: 1, fontSize: 15 },
-  suggestSection: { paddingHorizontal: 16, marginTop: 14 },
-  suggestLabel: { fontSize: 12, fontWeight: "600", marginBottom: 8 },
-  suggestChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginRight: 8,
-  },
-  filterRow: { flexDirection: "row", paddingHorizontal: 16, marginTop: 14, gap: 8 },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+  filterRow: { flexDirection: "row", paddingHorizontal: 16, marginTop: 10, gap: 8 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   filterChipText: { fontSize: 13, fontWeight: "600" },
   channelList: { padding: 16, gap: 10 },
   channelCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
-    borderRadius: 16,
+    padding: 18,
+    borderRadius: 14,
     borderWidth: 1,
+    gap: 10,
   },
-  channelIcon: {
-    width: 46,
-    height: 46,
+  channelName: { fontSize: 16, fontWeight: "600" },
+  joinedDot: { width: 8, height: 8, borderRadius: 4 },
+  joinSmallChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  joinSmallChipText: { fontSize: 12, fontWeight: "700" },
+  chevronCircle: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
-  channelInfo: { flex: 1 },
-  channelTop: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
-  channelName: { fontSize: 15, fontWeight: "700", marginRight: 6 },
-  joinedBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
-  joinedBadgeText: { fontSize: 11, fontWeight: "700" },
-  channelDesc: { fontSize: 13, marginBottom: 3 },
-  channelPreview: { fontSize: 13, marginBottom: 3 },
-  channelMembers: { fontSize: 11 },
-  joinBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-    marginLeft: 8,
-    borderWidth: 1,
-  },
-  joinBtnText: { fontSize: 13, fontWeight: "700" },
   emptyCard: {
     alignItems: "center",
     padding: 32,
     borderRadius: 16,
     borderWidth: 1,
     borderStyle: "dashed",
+    gap: 10,
   },
-  emptyTitle: { fontSize: 17, fontWeight: "700", marginTop: 12, marginBottom: 6 },
-  emptyBody: { textAlign: "center", fontSize: 14, marginBottom: 16, lineHeight: 20 },
+  emptyTitle: { fontSize: 17, fontWeight: "700" },
+  emptyBody: { textAlign: "center", fontSize: 14, lineHeight: 20 },
   emptyBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   // Chat
   chatHeader: {

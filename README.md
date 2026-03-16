@@ -87,13 +87,15 @@ An app that helps teens manage their time, communicate with others about shared 
 - Reset all tips from Profile → Settings → Tips & Hints
 
 ### UI / UX
-- **Hobbily colour palette:** coral `#fc7273`, lavender `#cacef2`, navy `#032068`, black `#000000`
-- Swipe left/right between all 5 tabs with a smooth slide animation
+- **Mockup-aligned design:** lavender background `#B8C4E4`, dark navy `#1B2D6B`, coral accent `#E86B5E`
+- **3-tab navigation:** Home, Community, Profile — Planner and Explore accessed via quick action buttons
+- Swipe left/right between the 3 main tabs with smooth slide animation
 - Tab bar respects Android navigation bar and iPhone home indicator (no collision with system buttons)
 - Custom `ConfirmModal` — themed, replaces all system alerts
 - Light and dark mode, follows system preference or toggled manually
 - Safe area handling throughout — no content hidden behind notches or status bars
 - Animated splash screen fades out once all data has loaded
+- All screens use a consistent "Back" button header when navigated to as sub-screens
 
 ---
 
@@ -126,12 +128,12 @@ app/
 ├── edit-post/[id].tsx       # Edit post screen
 ├── post/[id].tsx            # Post detail + comments screen
 └── (tabs)/
-    ├── _layout.tsx          # Bottom tab bar (5 tabs, safe-area-aware height)
-    ├── index.tsx            # Home dashboard — streak card, tasks, quick actions (tab 0)
-    ├── time-manager.tsx     # Schedule / time management (tab 1)
-    ├── community.tsx        # Hobby channels + real-time chat (tab 2)
-    ├── opportunities.tsx    # Programs & clubs explorer (tab 3)
-    └── profile.tsx          # Profile — edit, posts, badges, settings, logout, delete (tab 4)
+    ├── _layout.tsx          # Bottom tab bar (3 visible tabs, safe-area-aware height)
+    ├── index.tsx            # Home dashboard — greeting, schedule, streak, suggested, quick actions (tab 0)
+    ├── community.tsx        # Hobby channels + real-time chat (tab 1)
+    ├── profile.tsx          # Profile — interests, streak badge, settings, posts, badges (tab 2)
+    ├── time-manager.tsx     # Planner — weekly grid, add sessions/tasks, hobby time (hidden, stack nav)
+    └── opportunities.tsx    # Explore — programs & clubs, search + map, register buttons (hidden, stack nav)
 
 components/
 ├── SwipeableTab.tsx         # Reusable swipe-to-navigate wrapper for all tab screens
@@ -245,6 +247,7 @@ Scan the QR code with Expo Go, or press `a` for Android emulator.
 - [x] Animated splash screen
 - [x] Community Feed screen — accessible from Home quick action; full post list with create button
 - [x] Profile "Posts" tab — view and manage your own posts in-profile
+- [x] Full mockup integration — lavender/navy/coral palette, 3-tab nav, all screens redesigned to match wireframe
 
 ---
 

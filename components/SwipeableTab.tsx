@@ -20,11 +20,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 
+// Only the 3 visible tabs are swipeable; time-manager and opportunities are
+// accessed via router.push from within screens (not via swipe)
 const TABS = [
   "/(tabs)/",
-  "/(tabs)/time-manager",
   "/(tabs)/community",
-  "/(tabs)/opportunities",
   "/(tabs)/profile",
 ] as const;
 

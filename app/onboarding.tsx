@@ -215,6 +215,7 @@ export default function OnboardingScreen() {
               authLoading={authLoading}
               canNext={canContinue[1]}
               onNext={handleAccountContinue}
+              onClose={goBack}
             />
           )}
           {step === 2 && (
@@ -256,107 +257,151 @@ export default function OnboardingScreen() {
 
 function StepWelcome({ colors, onStart, onLogin }: { colors: any; onStart: () => void; onLogin: () => void }) {
   return (
-    <View style={styles.stepContent}>
-      <Image source={require("../assets/images/Hobbily_Logo.png")} style={styles.welcomeLogo} />
-      <Text style={[styles.welcomeTitle, { color: colors.text }]}>Hobbily</Text>
-      <Text style={[styles.welcomeTagline, { color: colors.secondaryText }]}>
-        Discover hobbies.{"\n"}Build habits. Connect with peers.
-      </Text>
-      <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={onStart}>
-        <Text style={styles.primaryBtnText}>Get Started</Text>
-        <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onLogin} style={styles.secondaryBtn}>
-        <Text style={[styles.secondaryBtnText, { color: colors.secondaryText }]}>
-          Already have an account? Sign in
+    <View style={styles.welcomeContainer}>
+      {/* Top section: logo + title + tagline */}
+      <View style={styles.welcomeTop}>
+        <Image source={require("../assets/images/Hobbily_Logo.png")} style={styles.welcomeLogo} />
+        <Text style={[styles.welcomeTitle, { color: colors.primary }]}>
+          Welcome to{"\n"}
+          <Text style={styles.welcomeTitleBold}>Hobbily</Text>
         </Text>
-      </TouchableOpacity>
+        <Text style={[styles.welcomeTagline, { color: colors.primary }]}>
+          Discover your interests{"\n"}&amp;{"\n"}Build your future
+        </Text>
+      </View>
+
+      {/* Bottom section: two big buttons */}
+      <View style={styles.welcomeButtons}>
+        <TouchableOpacity
+          style={[styles.welcomeBtn, { backgroundColor: colors.primary }]}
+          onPress={onLogin}
+        >
+          <Text style={styles.welcomeBtnText}>Login</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.welcomeBtn, { backgroundColor: colors.primary, marginTop: 16 }]}
+          onPress={onStart}
+        >
+          <Text style={styles.welcomeBtnText}>Sign in</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 // ── Step 1: Account ───────────────────────────────────────────────────────────
 
+function IconInput({ icon, placeholder, value, onChangeText, secureTextEntry, keyboardType, autoCapitalize, colors }: any) {
+  return (
+    <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+      <Ionicons name={icon} size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
+      <TextInput
+        style={[styles.iconInputText, { color: colors.text }]}
+        placeholder={placeholder}
+        placeholderTextColor={colors.accent}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize ?? "none"}
+        autoCorrect={false}
+      />
+    </View>
+  );
+}
+
 function StepAccount({
   colors, email, setEmail, password, setPassword,
   signInMode, setSignInMode, authError, setAuthError,
-  authLoading, canNext, onNext,
+  authLoading, canNext, onNext, onClose,
 }: any) {
   return (
-    <ScrollView contentContainerStyle={styles.stepContent} keyboardShouldPersistTaps="handled">
-      <Text style={[styles.stepTitle, { color: colors.text }]}>
-        {signInMode ? "Welcome back" : "Create your account"}
-      </Text>
-      <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
-        {signInMode
-          ? "Sign in to continue where you left off."
-          : "Your data syncs to the cloud — access it from any device."}
-      </Text>
-
-      {/* Toggle sign-in / sign-up */}
-      <View style={[styles.toggleModeRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <TouchableOpacity
-          style={[styles.toggleModeBtn, !signInMode && { backgroundColor: colors.primary }]}
-          onPress={() => { setSignInMode(false); setAuthError(""); }}
-        >
-          <Text style={[styles.toggleModeTxt, { color: !signInMode ? "#fff" : colors.secondaryText }]}>
-            Create account
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleModeBtn, signInMode && { backgroundColor: colors.primary }]}
-          onPress={() => { setSignInMode(true); setAuthError(""); }}
-        >
-          <Text style={[styles.toggleModeTxt, { color: signInMode ? "#fff" : colors.secondaryText }]}>
-            Sign in
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>Email *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-        placeholder="you@example.com"
-        placeholderTextColor={colors.secondaryText}
-        value={email}
-        onChangeText={(v) => { setEmail(v); setAuthError(""); }}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-
-      <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>Password *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-        placeholder="At least 6 characters"
-        placeholderTextColor={colors.secondaryText}
-        value={password}
-        onChangeText={(v) => { setPassword(v); setAuthError(""); }}
-        secureTextEntry
-      />
-
-      {authError ? (
-        <View style={[styles.errorBox, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
-          <Ionicons name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 8 }} />
-          <Text style={[styles.errorText, { color: "#DC2626" }]}>{authError}</Text>
-        </View>
-      ) : null}
-
+    <View style={styles.authSheet}>
+      {/* X close button */}
       <TouchableOpacity
-        style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 16, opacity: canNext ? 1 : 0.4 }]}
+        onPress={onClose}
+        style={[styles.authCloseBtn, { backgroundColor: colors.primary }]}
+      >
+        <Ionicons name="close" size={20} color="#fff" />
+      </TouchableOpacity>
+
+      <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.authTitle, { color: colors.text }]}>
+          {signInMode ? "Login" : "Sign Up"}
+        </Text>
+        <TouchableOpacity onPress={() => { setSignInMode(!signInMode); setAuthError(""); }}>
+          <Text style={[styles.authSwitch, { color: colors.text }]}>
+            {signInMode ? "Don't have account? " : "Already registered? "}
+            <Text style={{ fontWeight: "800", textDecorationLine: "underline" }}>
+              {signInMode ? "Sign Up" : "Sign in"}
+            </Text>
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.authFields}>
+          {!signInMode && (
+            <IconInput
+              icon="person-outline"
+              placeholder="Name"
+              value=""
+              onChangeText={() => {}}
+              colors={colors}
+            />
+          )}
+          <IconInput
+            icon="mail-outline"
+            placeholder="Email"
+            value={email}
+            onChangeText={(v: string) => { setEmail(v); setAuthError(""); }}
+            keyboardType="email-address"
+            colors={colors}
+          />
+          <IconInput
+            icon="lock-closed-outline"
+            placeholder="Password"
+            value={password}
+            onChangeText={(v: string) => { setPassword(v); setAuthError(""); }}
+            secureTextEntry
+            colors={colors}
+          />
+          {!signInMode && (
+            <TouchableOpacity
+              style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
+              <Text style={[styles.iconInputText, { color: colors.accent }]}>Date of Birth</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {authError ? (
+          <View style={[styles.errorBox, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
+            <Ionicons name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 8 }} />
+            <Text style={[styles.errorText, { color: "#DC2626" }]}>{authError}</Text>
+          </View>
+        ) : null}
+
+        {signInMode && (
+          <TouchableOpacity style={{ alignItems: "center", marginTop: 8 }}>
+            <Text style={[styles.authSwitch, { color: colors.text }]}>
+              <Text style={{ textDecorationLine: "underline" }}>Forgot Password?</Text>
+            </Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+
+      {/* Arrow submit button */}
+      <TouchableOpacity
+        style={[styles.authArrowBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
         onPress={canNext && !authLoading ? onNext : undefined}
       >
         {authLoading
           ? <ActivityIndicator color="#fff" />
-          : (
-            <>
-              <Text style={styles.primaryBtnText}>{signInMode ? "Sign In" : "Create Account"}</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
-            </>
-          )
+          : <Ionicons name="arrow-forward" size={24} color="#fff" />
         }
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -364,49 +409,50 @@ function StepAccount({
 
 function StepBasicInfo({ colors, username, setUsername, age, setAge, city, setCity, ageError, canNext, onNext }: any) {
   return (
-    <ScrollView contentContainerStyle={styles.stepContent} keyboardShouldPersistTaps="handled">
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Tell us about yourself</Text>
-      <Text style={[styles.stepSub, { color: colors.secondaryText }]}>This info appears on your profile.</Text>
+    <ScrollView contentContainerStyle={styles.infoContent} keyboardShouldPersistTaps="handled">
+      {/* Avatar placeholder */}
+      <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
+        <Ionicons name="person-outline" size={52} color={colors.primary} />
+      </View>
 
-      <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>Username *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-        placeholder="e.g. Sara_J"
-        placeholderTextColor={colors.secondaryText}
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-      />
+      <View style={styles.infoFields}>
+        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          <TextInput
+            style={[styles.iconInputText, { color: colors.text }]}
+            placeholder="Name"
+            placeholderTextColor={colors.accent}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="words"
+          />
+        </View>
 
-      <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>Age</Text>
-      <TextInput
-        style={[
-          styles.input,
-          { backgroundColor: colors.card, borderColor: ageError ? colors.danger : colors.border, color: colors.text },
-        ]}
-        placeholder="e.g. 16"
-        placeholderTextColor={colors.secondaryText}
-        value={age}
-        onChangeText={setAge}
-        keyboardType="number-pad"
-      />
-      {ageError ? <Text style={[styles.fieldError, { color: colors.danger }]}>{ageError}</Text> : null}
+        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          <TextInput
+            style={[styles.iconInputText, { color: colors.text }]}
+            placeholder="City"
+            placeholderTextColor={colors.accent}
+            value={city}
+            onChangeText={setCity}
+          />
+        </View>
 
-      <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>City</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-        placeholder="e.g. Jerusalem, Ramallah, Tel Aviv"
-        placeholderTextColor={colors.secondaryText}
-        value={city}
-        onChangeText={setCity}
-      />
+        <TouchableOpacity
+          style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+        >
+          <Text style={[styles.iconInputText, { color: age ? colors.text : colors.accent }]}>
+            {age || "Date of Birth"}
+          </Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
+        </TouchableOpacity>
+        {ageError ? <Text style={[styles.fieldError, { color: colors.danger }]}>{ageError}</Text> : null}
+      </View>
 
       <TouchableOpacity
-        style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 16, opacity: canNext ? 1 : 0.4 }]}
+        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
         onPress={canNext ? onNext : undefined}
       >
-        <Text style={styles.primaryBtnText}>Continue</Text>
-        <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
+        <Text style={styles.nextBtnText}>Next</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -416,12 +462,22 @@ function StepBasicInfo({ colors, username, setUsername, age, setAge, city, setCi
 
 const PREDEFINED_LABELS = new Set(HOBBY_OPTIONS.map((h) => h.label));
 
+// Simplified interest grid matching mockup (2-column pill chips)
+const INTEREST_OPTIONS = [
+  { label: "Music" }, { label: "Gaming" },
+  { label: "Art" }, { label: "Sports" },
+  { label: "Coding" }, { label: "Language" },
+  { label: "Dance" }, { label: "Cooking" },
+  { label: "Photography" }, { label: "Reading" },
+  { label: "Other.." },
+];
+
 function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
   const [customInput, setCustomInput] = useState("");
-  const scrollRef = useRef<ScrollView>(null);
 
-  // Hobbies the user typed themselves (not in the predefined grid)
-  const customHobbies: string[] = selected.filter((h: string) => !PREDEFINED_LABELS.has(h));
+  const customHobbies: string[] = selected.filter(
+    (h: string) => !PREDEFINED_LABELS.has(h) && !INTEREST_OPTIONS.some((o) => o.label === h)
+  );
 
   function addCustomHobby() {
     const label = customInput.trim();
@@ -431,109 +487,82 @@ function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <View style={{ flex: 1 }}>
       <View style={styles.stepHeader}>
-        <Text style={[styles.stepTitle, { color: colors.text }]}>What do you love?</Text>
-        <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
-          Pick at least one. You can change these later.
-        </Text>
+        <Text style={[styles.interestTitle, { color: colors.primary }]}>Select Interest</Text>
       </View>
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
-        {/* Predefined hobby tiles */}
-        <View style={styles.hobbyGrid}>
-          {HOBBY_OPTIONS.map((h) => {
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+        <View style={styles.interestGrid}>
+          {INTEREST_OPTIONS.map((h) => {
+            const isOther = h.label === "Other..";
             const active = selected.includes(h.label);
             return (
               <TouchableOpacity
                 key={h.label}
-                onPress={() => onToggle(h.label)}
+                onPress={() => {
+                  if (!isOther) onToggle(h.label);
+                }}
                 style={[
-                  styles.hobbyTile,
-                  { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border },
+                  styles.interestChip,
+                  {
+                    backgroundColor: active ? colors.accent : colors.primary,
+                    borderColor: "transparent",
+                  },
                 ]}
               >
-                <Ionicons name={h.icon} size={34} color={active ? "#fff" : colors.secondaryText} />
-                <Text style={[styles.hobbyTileText, { color: active ? "#fff" : colors.text }]} numberOfLines={2}>
-                  {h.label}
-                </Text>
+                <Text style={styles.interestChipText}>{h.label}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Custom hobby input */}
-        <View style={styles.customHobbySection}>
-          <Text style={[styles.fieldLabel, { color: colors.secondaryText }]}>
-            Don't see yours? Add it
-          </Text>
-          <View style={styles.customHobbyRow}>
-            <TextInput
-              style={[styles.customHobbyInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-              placeholder="e.g. Skateboarding, Knitting…"
-              placeholderTextColor={colors.secondaryText}
-              value={customInput}
-              onChangeText={setCustomInput}
-              onSubmitEditing={addCustomHobby}
-              returnKeyType="done"
-              onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
-            />
-            <TouchableOpacity
-              onPress={addCustomHobby}
-              style={[styles.customAddBtn, { backgroundColor: customInput.trim() ? colors.primary : colors.border }]}
-              disabled={!customInput.trim()}
-            >
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
+        {customHobbies.length > 0 && (
+          <View style={[styles.customChipsRow, { paddingHorizontal: 16 }]}>
+            {customHobbies.map((h: string) => (
+              <TouchableOpacity
+                key={h}
+                onPress={() => onToggle(h)}
+                style={[styles.customChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}
+              >
+                <Text style={[styles.customChipText, { color: colors.primary }]}>{h}</Text>
+                <Ionicons name="close-circle" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            ))}
           </View>
-
-          {/* Chips for custom hobbies */}
-          {customHobbies.length > 0 && (
-            <View style={styles.customChipsRow}>
-              {customHobbies.map((h: string) => (
-                <TouchableOpacity
-                  key={h}
-                  onPress={() => onToggle(h)}
-                  style={[styles.customChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}
-                >
-                  <Ionicons name="star" size={12} color={colors.primary} />
-                  <Text style={[styles.customChipText, { color: colors.primary }]}>{h}</Text>
-                  <Ionicons name="close-circle" size={14} color={colors.primary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+        )}
       </ScrollView>
+
       <View style={styles.stepFooter}>
         <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
+          style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
           onPress={canNext ? onNext : undefined}
         >
-          <Text style={styles.primaryBtnText}>
-            {selected.length > 0 ? `Continue (${selected.length} selected)` : "Select at least 1"}
-          </Text>
-          {canNext && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />}
+          <Text style={styles.nextBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 // ── Step 4: Free Time ─────────────────────────────────────────────────────────
 
+const FREE_TIME_MOCKUP = [
+  { label: "Less than 30 min", value: "<30" as const },
+  { label: "30 - 60min", value: "30-60" as const },
+  { label: "1 - 2 hour", value: "1-2h" as const },
+  { label: "Set time", value: "2h+" as const },
+];
+
 function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
   return (
     <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>How much free time{"\n"}do you have daily?</Text>
-      <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
-        This helps us suggest realistic hobby sessions.
+      <Text style={[styles.freeTimeQuestion, { color: colors.primary }]}>
+        How much free time{"\n"}do you have ?
       </Text>
 
       <View style={styles.freeTimeOptions}>
-        {FREE_TIME_OPTIONS.map((opt) => {
+        {FREE_TIME_MOCKUP.map((opt) => {
           const active = value === opt.value;
           return (
             <TouchableOpacity
@@ -541,24 +570,23 @@ function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
               onPress={() => onSelect(opt.value)}
               style={[
                 styles.freeTimeCard,
-                { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border },
+                {
+                  backgroundColor: active ? colors.primary : colors.inputBackground,
+                  borderColor: active ? colors.primary : colors.border,
+                },
               ]}
             >
-              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.text }]}>{opt.label}</Text>
-              <Text style={[styles.freeTimeSub, { color: active ? "rgba(255,255,255,0.8)" : colors.secondaryText }]}>
-                {opt.sub}
-              </Text>
+              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.accent }]}>{opt.label}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
       <TouchableOpacity
-        style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
+        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
         onPress={canNext ? onNext : undefined}
       >
-        <Text style={styles.primaryBtnText}>Continue</Text>
-        <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
+        <Text style={styles.nextBtnText}>Continue</Text>
       </TouchableOpacity>
     </View>
   );
@@ -566,29 +594,37 @@ function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
 
 // ── Step 5: Feature Intro ─────────────────────────────────────────────────────
 
+const FEATURE_ROWS = [
+  { icon: "search-outline" as const, label: "Discover opportunities" },
+  { icon: "time-outline" as const, label: "Manage your time" },
+  { icon: "home-outline" as const, label: "Join community" },
+];
+
 function StepFeatures({ colors, onFinish }: { colors: any; onFinish: () => void }) {
   return (
     <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>You're all set! 🎉</Text>
-      <Text style={[styles.stepSub, { color: colors.secondaryText }]}>Here's what Hobbily can do for you:</Text>
+      <Text style={[styles.featuresTitleLg, { color: colors.primary }]}>App Features</Text>
 
-      <View style={styles.featureList}>
-        {FEATURES.map((f) => (
-          <View key={f.title} style={[styles.featureCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={[styles.featureIcon, { backgroundColor: colors.secondary }]}>
-              <Ionicons name={f.icon} size={26} color={colors.primary} />
+      <View style={styles.featureRows}>
+        {FEATURE_ROWS.map((f) => (
+          <TouchableOpacity
+            key={f.label}
+            style={[styles.featureRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+          >
+            <Ionicons name={f.icon} size={26} color={colors.primary} style={{ marginRight: 14 }} />
+            <Text style={[styles.featureRowLabel, { color: colors.accent }]}>{f.label}</Text>
+            <View style={[styles.featureRowChevron, { backgroundColor: colors.primary }]}>
+              <Ionicons name="chevron-forward" size={16} color="#fff" />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.featureTitle, { color: colors.text }]}>{f.title}</Text>
-              <Text style={[styles.featureBody, { color: colors.secondaryText }]}>{f.body}</Text>
-            </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 24 }]} onPress={onFinish}>
-        <Text style={styles.primaryBtnText}>Enter Hobbily</Text>
-        <Ionicons name="rocket-outline" size={18} color="#fff" style={{ marginLeft: 6 }} />
+      <TouchableOpacity
+        style={[styles.nextBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginTop: "auto" }]}
+        onPress={onFinish}
+      >
+        <Text style={[styles.nextBtnText, { color: colors.primary }]}>Continue</Text>
       </TouchableOpacity>
     </View>
   );
@@ -613,39 +649,13 @@ const styles = StyleSheet.create({
   stepWrap: { flex: 1 },
   stepContent: {
     flex: 1,
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 24,
   },
-  stepHeader: { paddingHorizontal: 28, paddingTop: 24, paddingBottom: 12 },
-  stepFooter: { paddingHorizontal: 28, paddingBottom: 28 },
-  stepTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5, marginBottom: 8, lineHeight: 36 },
-  stepSub: { fontSize: 15, lineHeight: 22, marginBottom: 24 },
-  fieldLabel: { fontSize: 13, fontWeight: "600", marginBottom: 6 },
-  fieldError: { fontSize: 12, marginTop: -10, marginBottom: 10 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 15,
-    marginBottom: 16,
-  },
-  // Sign-up / sign-in mode toggle
-  toggleModeRow: {
-    flexDirection: "row",
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 4,
-    marginBottom: 24,
-    gap: 4,
-  },
-  toggleModeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 9,
-    alignItems: "center",
-  },
-  toggleModeTxt: { fontSize: 14, fontWeight: "700" },
+  stepHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 12 },
+  stepFooter: { paddingHorizontal: 24, paddingBottom: 28 },
+  fieldError: { fontSize: 12, marginTop: -8, marginBottom: 10, paddingHorizontal: 4 },
   // Error box
   errorBox: {
     flexDirection: "row",
@@ -654,33 +664,135 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     marginBottom: 8,
+    marginHorizontal: 16,
   },
   errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  primaryBtn: {
-    flexDirection: "row",
+
+  // ── Welcome screen ──
+  welcomeContainer: { flex: 1, paddingHorizontal: 32, justifyContent: "space-between", paddingVertical: 48 },
+  welcomeTop: { alignItems: "center", flex: 1, justifyContent: "center", gap: 16 },
+  welcomeLogo: { width: 120, height: 120, resizeMode: "contain" },
+  welcomeTitle: { fontSize: 28, fontWeight: "700", textAlign: "center", lineHeight: 38 },
+  welcomeTitleBold: { fontSize: 36, fontWeight: "900" },
+  welcomeTagline: { fontSize: 18, textAlign: "center", lineHeight: 28, fontStyle: "italic" },
+  welcomeButtons: { gap: 0 },
+  welcomeBtn: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  welcomeBtnText: { color: "#fff", fontWeight: "800", fontSize: 18 },
+
+  // ── Auth screen (sheet) ──
+  authSheet: { flex: 1, backgroundColor: "#F0F0F6", borderRadius: 0, position: "relative" },
+  authCloseBtn: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginTop: 8,
+    zIndex: 10,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  secondaryBtn: { marginTop: 16, alignItems: "center", padding: 8 },
-  secondaryBtnText: { fontSize: 14 },
-  // Welcome
-  welcomeLogo: { width: 100, height: 100, resizeMode: "contain", alignSelf: "center", marginBottom: 16, marginTop: 40 },
-  welcomeTitle: { fontSize: 42, fontWeight: "900", textAlign: "center", letterSpacing: -1 },
-  welcomeTagline: { fontSize: 18, textAlign: "center", lineHeight: 28, marginVertical: 16 },
-  // Hobby grid — 3 columns so labels have room to breathe
+  authContent: { paddingHorizontal: 28, paddingTop: 60, paddingBottom: 24 },
+  authTitle: { fontSize: 36, fontWeight: "800", marginBottom: 6 },
+  authSwitch: { fontSize: 14, marginBottom: 32 },
+  authFields: { gap: 12, marginBottom: 16 },
+  authArrowBtn: {
+    margin: 24,
+    marginTop: 0,
+    height: 58,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // ── Icon-prefixed input ──
+  iconInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  iconInputText: { flex: 1, fontSize: 16 },
+
+  // ── BasicInfo screen ──
+  infoContent: { alignItems: "center", paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 },
+  avatarCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 32,
+  },
+  infoFields: { width: "100%", gap: 12, marginBottom: 32 },
+  nextBtn: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  nextBtnText: { color: "#fff", fontWeight: "700", fontSize: 17 },
+
+  // ── Interests screen ──
+  interestTitle: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 24 },
+  interestGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  interestChip: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minWidth: (SCREEN_W - 56) / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  interestChipText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  customChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  customChipText: { fontSize: 13, fontWeight: "600" },
+
+  // ── Free time screen ──
+  freeTimeQuestion: { fontSize: 26, fontWeight: "700", textAlign: "center", marginBottom: 32, lineHeight: 36 },
+  freeTimeOptions: { gap: 12, marginBottom: 32 },
+  freeTimeCard: {
+    padding: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  freeTimeLabel: { fontSize: 16, fontWeight: "600" },
+
+  // ── Features screen ──
+  featuresTitleLg: { fontSize: 28, fontWeight: "800", textAlign: "center", marginBottom: 32 },
+  featureRows: { gap: 14, marginBottom: 32 },
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  featureRowLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
+  featureRowChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Legacy (kept for compatibility)
   hobbyGrid: { flexDirection: "row", flexWrap: "wrap", padding: 16, gap: 12 },
-  // Custom hobby adder
   customHobbySection: { paddingHorizontal: 16, paddingBottom: 16 },
   customHobbyRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   customHobbyInput: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14 },
   customAddBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  customChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  customChipText: { fontSize: 13, fontWeight: "600" },
   hobbyTile: {
     width: (SCREEN_W - 56) / 3,
     aspectRatio: 1,
@@ -693,32 +805,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   hobbyTileText: { fontSize: 13, fontWeight: "600", textAlign: "center", lineHeight: 17 },
-  // Free time
-  freeTimeOptions: { gap: 10, marginBottom: 24 },
-  freeTimeCard: {
-    padding: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  freeTimeLabel: { fontSize: 17, fontWeight: "700" },
-  freeTimeSub: { fontSize: 13 },
-  // Features
-  featureList: { gap: 12 },
-  featureCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 14,
-  },
-  featureIcon: { width: 52, height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  featureTitle: { fontSize: 15, fontWeight: "700", marginBottom: 3 },
-  featureBody: { fontSize: 13, lineHeight: 18 },
-  // Notice box (kept for potential future use)
   noticeBox: {
     flexDirection: "row",
     alignItems: "center",

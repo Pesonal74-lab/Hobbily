@@ -9,9 +9,9 @@ import {
 import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
-import SwipeableTab from "../../components/SwipeableTab";
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
@@ -96,33 +96,52 @@ function RegistrationModal({ opp, onClose, colors }: { opp: Opportunity; onClose
 
 // ── Opportunity Card ──────────────────────────────────────────────────────────
 
-function OpportunityCard({ opp, saved, colors, onPress, onToggleSave }: { opp: Opportunity; saved: boolean; colors: any; onPress: () => void; onToggleSave: () => void }) {
+function OpportunityCard({ opp, saved, colors, onPress, onToggleSave, onRegister }: { opp: Opportunity; saved: boolean; colors: any; onPress: () => void; onToggleSave: () => void; onRegister: () => void }) {
+  const openMaps = () => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(opp.mapsQuery ?? opp.location)}`);
+
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]} activeOpacity={0.82}>
+    <TouchableOpacity onPress={onPress} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]} activeOpacity={0.92}>
       <View style={styles.cardTop}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.cardName, { color: colors.text }]}>{opp.name}</Text>
+          <Text style={[styles.cardName, { color: colors.primary }]}>{opp.name}</Text>
           <Text style={[styles.cardOrg, { color: colors.secondaryText }]}>{opp.organisation}</Text>
         </View>
-        <View style={{ alignItems: "flex-end", gap: 6 }}>
-          <View style={[styles.costBadge, { backgroundColor: COST_COLORS[opp.cost] + "18" }]}>
-            <Text style={[styles.costText, { color: COST_COLORS[opp.cost] }]}>{opp.cost}</Text>
-          </View>
-          <TouchableOpacity onPress={onToggleSave} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name={saved ? "heart" : "heart-outline"} size={20} color={saved ? "#EF4444" : colors.tabBarInactive} />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={onToggleSave} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name={saved ? "heart" : "heart-outline"} size={20} color={saved ? "#EF4444" : colors.secondaryText} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.cardMeta}>
+        <View style={styles.metaItem}>
+          <Ionicons name="location-outline" size={13} color={colors.secondaryText} />
+          <Text style={[styles.metaText, { color: colors.secondaryText }]}>{opp.location}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Ionicons name="people-outline" size={13} color={colors.secondaryText} />
+          <Text style={[styles.metaText, { color: colors.secondaryText }]}>Ages {opp.ageRange}</Text>
+        </View>
+        <View style={[styles.costBadge, { backgroundColor: COST_COLORS[opp.cost] + "20" }]}>
+          <Text style={[styles.costText, { color: COST_COLORS[opp.cost] }]}>{opp.cost}</Text>
         </View>
       </View>
+
       <Text style={[styles.cardDesc, { color: colors.secondaryText }]} numberOfLines={2}>{opp.description}</Text>
-      <View style={styles.cardMeta}>
-        {[{ icon: "location-outline", text: opp.location }, { icon: "people-outline", text: `Ages ${opp.ageRange}` }, { icon: "pricetag-outline", text: opp.category }].map((m) => (
-          <View key={m.text} style={styles.metaItem}>
-            <Ionicons name={m.icon as any} size={13} color={colors.tabBarInactive} />
-            <Text style={[styles.metaText, { color: colors.tabBarInactive }]}>{m.text}</Text>
-          </View>
-        ))}
+
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation?.(); onRegister(); }}
+          style={[styles.cardActionBtn, { backgroundColor: colors.accent }]}
+        >
+          <Text style={styles.cardActionBtnText}>Register</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation?.(); openMaps(); }}
+          style={[styles.cardActionBtn, { backgroundColor: colors.primary }]}
+        >
+          <Ionicons name="map-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+          <Text style={styles.cardActionBtnText}>Open in map</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={[styles.learnMore, { color: colors.primary }]}>View details <Ionicons name="arrow-forward" size={12} color={colors.primary} /></Text>
     </TouchableOpacity>
   );
 }
@@ -241,103 +260,122 @@ export default function OpportunitiesScreen() {
   });
 
   return (
-    <SwipeableTab tabIndex={3} backgroundColor={colors.background}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <View>
-            <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
-            <Text style={[styles.headerSub, { color: colors.secondaryText }]}>Programs, clubs & workshops</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={styles.exploreHeader}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.exploreBackBtn, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.exploreBackText, { color: colors.primary }]}>Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.exploreTitle, { color: colors.primary }]}>EXPLORE</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Search + Map row */}
+        <View style={styles.searchRow}>
+          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border, flex: 1 }]}>
+            <Ionicons name="search-outline" size={18} color={colors.secondaryText} style={{ marginRight: 8 }} />
+            <TextInput style={[styles.searchInput, { color: colors.text }]} placeholder="Search activities, hobbies..." placeholderTextColor={colors.secondaryText} value={search} onChangeText={setSearch} />
+            {search.length > 0 && <TouchableOpacity onPress={() => setSearch("")}><Ionicons name="close-circle" size={18} color={colors.secondaryText} /></TouchableOpacity>}
           </View>
-          <View style={[styles.countBadge, { backgroundColor: colors.primary + "18" }]}>
-            <Text style={[styles.countText, { color: colors.primary }]}>{filtered.length}</Text>
-          </View>
+          <TouchableOpacity style={[styles.mapBtn, { backgroundColor: colors.primary }]}>
+            <Ionicons name="map-outline" size={18} color="#fff" />
+            <Text style={styles.mapBtnText}>Map</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={styles.searchWrap}>
-            <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="search-outline" size={18} color={colors.secondaryText} style={{ marginRight: 8 }} />
-              <TextInput style={[styles.searchInput, { color: colors.text }]} placeholder="Search by hobby, location, name..." placeholderTextColor={colors.secondaryText} value={search} onChangeText={setSearch} />
-              {search.length > 0 && <TouchableOpacity onPress={() => setSearch("")}><Ionicons name="close-circle" size={18} color={colors.secondaryText} /></TouchableOpacity>}
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryStrip}>
-            {CATEGORIES.map((cat) => {
-              const isActive = cat === activeCategory;
-              return (
-                <TouchableOpacity key={cat} onPress={() => setActiveCategory(cat)} style={[styles.categoryChip, { borderColor: isActive ? colors.primary : colors.border, backgroundColor: isActive ? colors.primary : colors.card }]}>
-                  {cat === "Saved" && <Ionicons name="heart" size={12} color={isActive ? "#fff" : "#EF4444"} style={{ marginRight: 4 }} />}
-                  <Text style={[styles.categoryChipText, { color: isActive ? "#fff" : colors.text }]}>{cat}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.resultsList}>
-            {filtered.length === 0 ? (
-              <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Ionicons name={activeCategory === "Saved" ? "heart-outline" : "search-outline"} size={40} color={colors.secondaryText} />
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>{activeCategory === "Saved" ? "No saved items yet" : "No results found"}</Text>
-                <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>{activeCategory === "Saved" ? "Tap ♡ on any card to save it here." : "Try a different search or category."}</Text>
-                {activeCategory !== "Saved" && (
-                  <TouchableOpacity onPress={() => { setSearch(""); setActiveCategory("All"); }} style={[styles.emptyBtn, { backgroundColor: colors.primary }]}>
-                    <Text style={{ color: "#fff", fontWeight: "600" }}>Clear Filters</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              filtered.map((opp) => (
-                <OpportunityCard key={opp.id} opp={opp} saved={saved.includes(opp.id)} colors={colors} onPress={() => setSelected(opp)} onToggleSave={() => toggleSave(opp.id)} />
-              ))
-            )}
-          </View>
-
-          <View style={[styles.footerNote, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="information-circle-outline" size={16} color={colors.secondaryText} style={{ marginRight: 8 }} />
-            <Text style={[styles.footerText, { color: colors.secondaryText }]}>Know of a programme we're missing? Share it in Community!</Text>
-          </View>
-          <View style={{ height: 40 }} />
+        {/* Category filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryStrip}>
+          {CATEGORIES.map((cat) => {
+            const isActive = cat === activeCategory;
+            return (
+              <TouchableOpacity key={cat} onPress={() => setActiveCategory(cat)} style={[styles.categoryChip, { borderColor: isActive ? colors.accent : colors.border, backgroundColor: isActive ? colors.accent : colors.card }]}>
+                {cat === "Saved" && <Ionicons name="heart" size={12} color={isActive ? "#fff" : "#EF4444"} style={{ marginRight: 4 }} />}
+                <Text style={[styles.categoryChipText, { color: isActive ? "#fff" : colors.primary }]}>{cat}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
-        <DetailModal opp={selected} saved={selected ? saved.includes(selected.id) : false} onToggleSave={() => selected && toggleSave(selected.id)} onRegister={() => setRegistering(true)} onClose={() => setSelected(null)} colors={colors} />
-        {registering && selected && <RegistrationModal opp={selected} onClose={() => setRegistering(false)} colors={colors} />}
-      </SafeAreaView>
-    </SwipeableTab>
+        <View style={styles.resultsList}>
+          {filtered.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Ionicons name={activeCategory === "Saved" ? "heart-outline" : "search-outline"} size={40} color={colors.secondaryText} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>{activeCategory === "Saved" ? "No saved items yet" : "No results found"}</Text>
+              <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>{activeCategory === "Saved" ? "Tap ♡ on any card to save it here." : "Try a different search or category."}</Text>
+              {activeCategory !== "Saved" && (
+                <TouchableOpacity onPress={() => { setSearch(""); setActiveCategory("All"); }} style={[styles.emptyBtn, { backgroundColor: colors.primary }]}>
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>Clear Filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            filtered.map((opp) => (
+              <OpportunityCard
+                key={opp.id}
+                opp={opp}
+                saved={saved.includes(opp.id)}
+                colors={colors}
+                onPress={() => setSelected(opp)}
+                onToggleSave={() => toggleSave(opp.id)}
+                onRegister={() => { setSelected(opp); setRegistering(true); }}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      <DetailModal opp={selected} saved={selected ? saved.includes(selected.id) : false} onToggleSave={() => selected && toggleSave(selected.id)} onRegister={() => setRegistering(true)} onClose={() => setSelected(null)} colors={colors} />
+      {registering && selected && <RegistrationModal opp={selected} onClose={() => setRegistering(false)} colors={colors} />}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
-  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, marginTop: 2 },
-  countBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  countText: { fontWeight: "700", fontSize: 15 },
-  searchWrap: { paddingHorizontal: 16, paddingTop: 14 },
+
+  // Mockup header
+  exploreHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
+  exploreBackBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
+  exploreBackText: { fontSize: 14, fontWeight: "600" },
+  exploreTitle: { fontSize: 20, fontWeight: "800", letterSpacing: 1 },
+
+  // Search row
+  searchRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   searchBar: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   searchInput: { flex: 1, fontSize: 15 },
-  categoryStrip: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  mapBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  mapBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  categoryStrip: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   categoryChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   categoryChipText: { fontSize: 13, fontWeight: "600" },
+
   resultsList: { paddingHorizontal: 16, gap: 12 },
+
+  // Card
   card: { borderRadius: 16, borderWidth: 1, padding: 16 },
-  cardTop: { flexDirection: "row", marginBottom: 8, gap: 8 },
-  cardName: { fontSize: 16, fontWeight: "700", marginBottom: 2 },
+  cardTop: { flexDirection: "row", alignItems: "flex-start", marginBottom: 6, gap: 8 },
+  cardName: { fontSize: 15, fontWeight: "700", marginBottom: 2, flex: 1 },
   cardOrg: { fontSize: 13 },
   costBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: "flex-start" },
   costText: { fontSize: 11, fontWeight: "700" },
   cardDesc: { fontSize: 13, lineHeight: 19, marginBottom: 10 },
-  cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 8 },
+  cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10, alignItems: "center" },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 3 },
   metaText: { fontSize: 12 },
-  learnMore: { fontSize: 13, fontWeight: "700" },
+  cardActions: { flexDirection: "row", gap: 8 },
+  cardActionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 10 },
+  cardActionBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+
   emptyCard: { alignItems: "center", padding: 32, borderRadius: 16, borderWidth: 1, borderStyle: "dashed" },
   emptyTitle: { fontSize: 17, fontWeight: "700", marginTop: 12, marginBottom: 6 },
   emptyBody: { textAlign: "center", fontSize: 14, marginBottom: 16, lineHeight: 20 },
   emptyBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
-  footerNote: { flexDirection: "row", alignItems: "center", margin: 16, padding: 14, borderRadius: 12, borderWidth: 1 },
-  footerText: { flex: 1, fontSize: 13, lineHeight: 18 },
+
   // Modals
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36, maxHeight: "92%" },

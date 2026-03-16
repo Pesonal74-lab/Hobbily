@@ -20,11 +20,11 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useTime } from "../../context/TimeContext";
 import { useProfile } from "../../context/ProfileContext";
 import { useProgress } from "../../context/ProgressContext";
-import SwipeableTab from "../../components/SwipeableTab";
 import { Task } from "../../types/Task";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -707,203 +707,225 @@ export default function TimeManagerScreen() {
     }
   }
 
+  // Build 7-day weekly grid for the current week
+  const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const todayDow = new Date().getDay(); // 0=Sun
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - ((todayDow === 0 ? 7 : todayDow) - 1) + weekOffset * 7);
+
+  const weekGrid = weekDays.map((label, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const count = taskCounts[iso] ?? 0;
+    const isToday = iso === todayISO();
+    const isSelected = iso === selectedDate;
+    return { label, iso, count, isToday, isSelected };
+  });
+
+  const todayName = new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
+  const freeTimeMinutes = 45; // placeholder
+  const hasHobbyTasks = dayTasks.some((t) => t.type === "hobby");
+
   return (
-    <SwipeableTab tabIndex={1} backgroundColor={colors.background}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <View>
-            <Text style={[styles.headerTitle, { color: colors.text }]}>My Schedule</Text>
-            <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
-              {formatDate(todayISO())} · {new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-            </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header: Back + PLANNER + bell */}
+      <View style={styles.plannerHeader}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.backBtn, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.backBtnText, { color: colors.primary }]}>Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.plannerTitle, { color: colors.primary }]}>PLANNER</Text>
+        <TouchableOpacity style={styles.bellBtn}>
+          <Ionicons name="notifications-outline" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+
+        {/* Daily Reminder Banner */}
+        {showDailyBanner && (
+          <View style={[styles.reminderBanner, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <Ionicons name="alarm-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: colors.primary }]}>Daily Hobby Reminder!</Text>
+              <Text style={[styles.bannerBody, { color: colors.text }]}>
+                Take 5–10 minutes today to do something you love.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={dismissDailyBanner} style={{ padding: 4 }}>
+              <Ionicons name="close" size={18} color={colors.secondaryText} />
+            </TouchableOpacity>
           </View>
+        )}
+
+        {/* Reminder Toggle */}
+        <View style={[styles.reminderToggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.reminderToggleLeft}>
+            <Ionicons name="notifications-outline" size={20} color={colors.primary} style={{ marginRight: 10 }} />
+            <Text style={[styles.reminderToggleLabel, { color: colors.text }]}>Daily Hobby Reminder</Text>
+          </View>
+          <Switch
+            value={dailyReminderEnabled}
+            onValueChange={setDailyReminderEnabled}
+            trackColor={{ false: colors.border, true: colors.primary + "80" }}
+            thumbColor={dailyReminderEnabled ? colors.primary : colors.secondaryText}
+          />
+        </View>
+
+        {/* WEEKLY SCHEDULE grid */}
+        <View style={styles.weeklySection}>
+          <Text style={[styles.weeklySectionLabel, { color: colors.primary }]}>WEEKLY SCHEDULE :</Text>
+
+          {/* Day navigation */}
+          <View style={styles.weekNavRow}>
+            <TouchableOpacity onPress={() => setWeekOffset((w) => w - 1)} style={styles.weekNavBtn}>
+              <Ionicons name="chevron-back" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={styles.weekGrid}>
+              {weekGrid.map((d) => (
+                <TouchableOpacity
+                  key={d.iso}
+                  onPress={() => setSelectedDate(d.iso)}
+                  style={[
+                    styles.weekDayCell,
+                    {
+                      backgroundColor: d.isSelected ? colors.accent :
+                        d.isToday ? colors.accent + "60" : colors.secondary,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.weekDayLabel, { color: d.isSelected ? "#fff" : colors.primary }]}>
+                    {d.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity onPress={() => setWeekOffset((w) => w + 1)} style={styles.weekNavBtn}>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Task count row */}
+          <View style={styles.weekGrid}>
+            {weekGrid.map((d) => (
+              <View
+                key={d.iso + "_count"}
+                style={[
+                  styles.weekCountCell,
+                  {
+                    backgroundColor: d.count > 0
+                      ? (d.isSelected ? colors.accent : colors.primary + "40")
+                      : colors.secondary + "80",
+                  },
+                ]}
+              >
+                {d.count > 0 && (
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{d.count}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Add buttons */}
+        <View style={styles.addButtonsRow}>
           <TouchableOpacity
-            onPress={openAdd}
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            style={[styles.addTaskBtn, { backgroundColor: colors.primary }]}
+            onPress={() => { openAdd(); }}
           >
-            <Ionicons name="add" size={24} color="#fff" />
+            <Text style={styles.addTaskBtnText}>Add hobby{"\n"}session</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addTaskBtn, { backgroundColor: colors.primary }]}
+            onPress={openAdd}
+          >
+            <Text style={styles.addTaskBtnText}>Add task</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-          {/* Daily Reminder Banner */}
-          {showDailyBanner && (
-            <View style={[styles.reminderBanner, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}>
-              <Ionicons name="alarm-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.bannerTitle, { color: colors.primary }]}>Daily Hobby Reminder!</Text>
-                <Text style={[styles.bannerBody, { color: colors.text }]}>
-                  Take 5–10 minutes today to do something you love.
-                </Text>
-              </View>
-              <TouchableOpacity onPress={dismissDailyBanner} style={{ padding: 4 }}>
-                <Ionicons name="close" size={18} color={colors.secondaryText} />
-              </TouchableOpacity>
-            </View>
+        {/* Today's Schedule card */}
+        <View style={[styles.todayCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.todayCardTitle, { color: colors.accent }]}>
+            Today's Schedule:{" "}
+            <Text style={[styles.todayCardDay, { color: colors.primary }]}>{todayName}</Text>
+          </Text>
+
+          {dayTasks.length === 0 ? (
+            <TouchableOpacity onPress={openAdd} style={[styles.emptyRow, { backgroundColor: colors.secondary }]}>
+              <Text style={[{ color: colors.accent, fontWeight: "600" }]}>Nothing scheduled — add activity</Text>
+            </TouchableOpacity>
+          ) : (
+            dayTasks.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                colors={colors}
+                onToggle={() => handleToggle(task)}
+                onEdit={() => openEdit(task)}
+                onDelete={() => deleteTask(task.id)}
+              />
+            ))
           )}
 
-          {/* Reminder Toggle */}
-          <View style={[styles.reminderToggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.reminderToggleLeft}>
-              <Ionicons name="notifications-outline" size={20} color={colors.primary} style={{ marginRight: 10 }} />
-              <View>
-                <Text style={[styles.reminderToggleLabel, { color: colors.text }]}>Daily Hobby Reminder</Text>
-                <Text style={[styles.reminderToggleSub, { color: colors.secondaryText }]}>
-                  Get a nudge each day to practice
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={dailyReminderEnabled}
-              onValueChange={setDailyReminderEnabled}
-              trackColor={{ false: colors.border, true: colors.primary + "80" }}
-              thumbColor={dailyReminderEnabled ? colors.primary : colors.secondaryText}
-            />
+          {/* Free time badge */}
+          <View style={[styles.freeTimeBadge, { backgroundColor: colors.accent }]}>
+            <Text style={styles.freeTimeBadgeText}>
+              You have {freeTimeMinutes} min of free time
+            </Text>
           </View>
+        </View>
 
-          {/* Streak mini */}
-          {currentStreak > 0 && (
-            <View style={[styles.streakMini, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}>
-              <Ionicons name="flame" size={18} color="#F59E0B" />
-              <Text style={[styles.streakMiniText, { color: colors.primary }]}>
-                {currentStreak}-day streak · {totalSessions} sessions total
-              </Text>
+        {/* Hobby time section */}
+        <View style={[styles.hobbyTimeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.hobbyTimeTitle, { color: colors.primary }]}>Hobby time !!!</Text>
+          <View style={styles.hobbyTimeRow}>
+            <View style={styles.hobbyTimePlaceholders}>
+              {(profile.hobbies.slice(0, 2).length > 0 ? profile.hobbies.slice(0, 2) : ["Hobby 1", "Hobby 2"]).map((h, i) => (
+                <View key={i} style={[styles.hobbyTimePill, { backgroundColor: colors.accent }]}>
+                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>{h}</Text>
+                </View>
+              ))}
             </View>
-          )}
-
-          {/* Day Strip */}
-          <View style={styles.sectionPad}>
-            <DayStrip
-              selected={selectedDate}
-              onSelect={setSelectedDate}
-              colors={colors}
-              taskCounts={taskCounts}
-              weekOffset={weekOffset}
-              onWeekChange={(d) => setWeekOffset((w) => w + d)}
-            />
+            <TouchableOpacity
+              onPress={() => {
+                const firstHobby = dayTasks.find((t) => t.type === "hobby");
+                setTimerTask({
+                  title: firstHobby?.title ?? (profile.hobbies[0] ?? "Practice"),
+                  duration: firstHobby?.duration ?? 15
+                });
+                setTimerVisible(true);
+              }}
+              style={[styles.startBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.startBtnText}>START !</Text>
+            </TouchableOpacity>
           </View>
+        </View>
+      </ScrollView>
 
-          {/* Progress for selected day */}
-          {totalToday > 0 && (
-            <View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.progressTop}>
-                <Text style={[styles.progressLabel, { color: colors.text }]}>
-                  {formatDate(selectedDate)} — {completedToday}/{totalToday} done
-                </Text>
-                <Text style={[styles.progressPct, { color: colors.primary }]}>
-                  {Math.round((completedToday / totalToday) * 100)}%
-                </Text>
-              </View>
-              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { backgroundColor: colors.primary, width: `${(completedToday / totalToday) * 100}%` as any },
-                  ]}
-                />
-              </View>
-            </View>
-          )}
+      <TaskModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSave={handleSave}
+        defaultDate={selectedDate}
+        colors={colors}
+        hobbies={profile.hobbies}
+        editingTask={editingTask}
+      />
 
-          {/* Task list */}
-          <View style={styles.sectionPad}>
-            {dayTasks.length === 0 ? (
-              <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Ionicons name="calendar-outline" size={40} color={colors.secondaryText} />
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>Nothing scheduled</Text>
-                <Text style={[styles.emptyBody, { color: colors.secondaryText }]}>
-                  Tap + to add a task or hobby session for {formatDate(selectedDate).toLowerCase()}.
-                </Text>
-                <TouchableOpacity
-                  onPress={openAdd}
-                  style={[styles.emptyAddBtn, { backgroundColor: colors.primary }]}
-                >
-                  <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Add Activity</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              dayTasks.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  colors={colors}
-                  onToggle={() => handleToggle(task)}
-                  onEdit={() => openEdit(task)}
-                  onDelete={() => deleteTask(task.id)}
-                />
-              ))
-            )}
-          </View>
-
-          {/* Quick-add from profile hobbies */}
-          {profile.hobbies.length > 0 && (
-            <View style={styles.sectionPad}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Hobbies</Text>
-              <Text style={[styles.sectionSub, { color: colors.secondaryText }]}>
-                Tap any hobby to quickly add a 30-min session.
-              </Text>
-              <View style={styles.hobbyChips}>
-                {profile.hobbies.map((h) => (
-                  <TouchableOpacity
-                    key={h}
-                    onPress={() =>
-                      addTask({
-                        title: h,
-                        type: "hobby",
-                        date: selectedDate,
-                        time: "16:00",
-                        duration: 30,
-                        completed: false,
-                      })
-                    }
-                    style={[styles.quickHobbyChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "40" }]}
-                  >
-                    <Ionicons name="star-outline" size={14} color={colors.primary} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Floating Practice Now button */}
-        {dayTasks.length > 0 && (
-          <TouchableOpacity
-            onPress={() => {
-              const firstHobby = dayTasks.find((t) => t.type === "hobby");
-              setTimerTask({ title: firstHobby?.title ?? dayTasks[0].title, duration: firstHobby?.duration ?? dayTasks[0].duration });
-              setTimerVisible(true);
-            }}
-            style={[styles.practiceFloatBtn, { backgroundColor: colors.primary }]}
-          >
-            <Ionicons name="play-circle" size={20} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Practice Now</Text>
-          </TouchableOpacity>
-        )}
-
-        <TaskModal
-          visible={modalVisible}
-          onClose={() => setModalVisible(false)}
-          onSave={handleSave}
-          defaultDate={selectedDate}
-          colors={colors}
-          hobbies={profile.hobbies}
-          editingTask={editingTask}
-        />
-
-        <PracticeTimerModal
-          visible={timerVisible}
-          onClose={() => setTimerVisible(false)}
-          onComplete={async (minutes) => { await recordSession(minutes); }}
-          defaultTitle={timerTask?.title}
-          defaultMinutes={timerTask?.duration ?? 15}
-          colors={colors}
-        />
-      </SafeAreaView>
-    </SwipeableTab>
+      <PracticeTimerModal
+        visible={timerVisible}
+        onClose={() => setTimerVisible(false)}
+        onComplete={async (minutes) => { await recordSession(minutes); }}
+        defaultTitle={timerTask?.title}
+        defaultMinutes={timerTask?.duration ?? 15}
+        colors={colors}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -1115,4 +1137,105 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
   },
+
+  // ── Mockup-aligned planner styles ─────────────────────────────────────────
+  plannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  backBtnText: { fontSize: 14, fontWeight: "600" },
+  plannerTitle: { fontSize: 20, fontWeight: "800", letterSpacing: 1 },
+  bellBtn: { width: 40, alignItems: "flex-end" },
+
+  weeklySection: {
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  weeklySectionLabel: { fontSize: 14, fontWeight: "700", marginBottom: 8, letterSpacing: 0.5 },
+  weekNavRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
+  weekGrid: { flex: 1, flexDirection: "row", gap: 4 },
+  weekDayCell: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  weekDayLabel: { fontSize: 11, fontWeight: "700" },
+  weekCountCell: {
+    flex: 1,
+    height: 14,
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  addButtonsRow: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 14,
+    gap: 12,
+  },
+  addTaskBtn: {
+    flex: 1,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addTaskBtnText: { color: "#fff", fontWeight: "700", fontSize: 14, textAlign: "center" },
+
+  todayCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  todayCardTitle: { fontSize: 16, fontWeight: "700" },
+  todayCardDay: { fontWeight: "400" },
+  emptyRow: {
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  freeTimeBadge: {
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  freeTimeBadgeText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+
+  hobbyTimeCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
+  hobbyTimeTitle: { fontSize: 18, fontWeight: "800", marginBottom: 12 },
+  hobbyTimeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  hobbyTimePlaceholders: { flexDirection: "row", gap: 8 },
+  hobbyTimePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  startBtn: {
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  startBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 });

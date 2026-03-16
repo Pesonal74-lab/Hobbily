@@ -20,13 +20,13 @@ export default function FeedScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { borderColor: colors.border }]}>
+          <Text style={[styles.backBtnText, { color: colors.primary }]}>Back</Text>
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Community Feed</Text>
-        <TouchableOpacity onPress={() => router.push("/create-post")} hitSlop={8}>
-          <Ionicons name="create-outline" size={24} color={colors.primary} />
+        <Text style={[styles.headerTitle, { color: colors.primary }]}>FEED</Text>
+        <TouchableOpacity onPress={() => router.push("/create-post")} style={[styles.createIconBtn, { backgroundColor: colors.accent }]}>
+          <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -71,10 +71,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
+    paddingVertical: 12,
   },
-  headerTitle: { fontSize: 20, fontWeight: "800" },
+  backBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
+  backBtnText: { fontSize: 14, fontWeight: "600" },
+  headerTitle: { fontSize: 20, fontWeight: "800", letterSpacing: 1 },
+  createIconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
   emptyText: { fontSize: 16, textAlign: "center" },
   createBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 4 },

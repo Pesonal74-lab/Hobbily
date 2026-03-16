@@ -349,79 +349,84 @@ export default function ProfileScreen() {
   ];
 
   return (
-    <SwipeableTab tabIndex={4} backgroundColor={colors.background}>
+    <SwipeableTab tabIndex={2} backgroundColor={colors.background}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
-          <Image
-            source={require("../../assets/images/Hobbily_Logo.png")}
-            style={styles.headerLogo}
-          />
-        </View>
 
         <ScrollView
           contentContainerStyle={{ paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Avatar hero card */}
-          <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitial}>{initials}</Text>
+          {/* Avatar */}
+          <View style={styles.avatarSection}>
+            <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
+              <Ionicons name="person-outline" size={56} color={colors.primary} />
             </View>
-            <Text style={styles.heroName}>{draft.username || "Your Name"}</Text>
-            {draft.city ? (
-              <View style={styles.heroLocationRow}>
-                <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.heroLocation}>{draft.city}</Text>
-              </View>
-            ) : null}
-            {draft.bio ? (
-              <Text style={styles.heroBio} numberOfLines={2}>{draft.bio}</Text>
-            ) : null}
+            <Text style={[styles.heroName, { color: colors.primary }]}>
+              {draft.username || "User name"}
+            </Text>
           </View>
 
-          {/* Stats row */}
-          <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* My Interests card */}
+          <View style={[styles.interestsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.interestsTitle, { color: colors.primary }]}>My intrests</Text>
+            {draft.hobbies.length === 0 ? (
+              <Text style={[styles.interestsEmpty, { color: colors.secondaryText }]}>No hobbies yet</Text>
+            ) : (
+              draft.hobbies.slice(0, 5).map((hobby) => (
+                <View key={hobby} style={[styles.interestRow, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.interestRowText}>{hobby}</Text>
+                </View>
+              ))
+            )}
+            <TouchableOpacity
+              onPress={() => setActiveTab("edit")}
+              style={[styles.editInterestsBtn, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.editInterestsBtnText, { color: colors.primary }]}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Streak badge */}
+          {currentStreak > 0 && (
+            <View style={[styles.streakBadge, { backgroundColor: colors.accent }]}>
+              <Text style={styles.streakBadgeText}>Streak:  {currentStreak} days</Text>
+            </View>
+          )}
+
+          {/* Menu rows */}
+          <View style={styles.menuSection}>
             {[
-              { label: "Streak", value: `${currentStreak}🔥` },
-              { label: "Best", value: `${longestStreak}d` },
-              { label: "Sessions", value: `${totalSessions}` },
-              { label: "Practice", value: practiceLabel },
-            ].map((s) => (
-              <View key={s.label} style={styles.statItem}>
-                <Text style={[styles.statValue, { color: colors.primary }]}>{s.value}</Text>
-                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Tab selector */}
-          <View style={[styles.tabSelector, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {TABS.map((t) => (
+              { icon: "settings-outline" as const, label: "Settings", onPress: () => setActiveTab("settings") },
+              { icon: "notifications-outline" as const, label: "Notifications", onPress: () => setActiveTab("settings") },
+              { icon: "search-outline" as const, label: "My Posts", onPress: () => setActiveTab("posts") },
+            ].map((item) => (
               <TouchableOpacity
-                key={t.id}
-                style={[
-                  styles.tabPill,
-                  activeTab === t.id && { backgroundColor: colors.primary },
-                ]}
-                onPress={() => setActiveTab(t.id)}
+                key={item.label}
+                style={[styles.menuRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+                onPress={item.onPress}
               >
-                <Text
-                  style={[
-                    styles.tabPillText,
-                    { color: activeTab === t.id ? "#fff" : colors.secondaryText },
-                  ]}
-                >
-                  {t.label}
-                </Text>
+                <Ionicons name={item.icon} size={24} color={colors.primary} />
+                <Text style={[styles.menuRowLabel, { color: colors.primary }]}>{item.label}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* ── Edit tab ─────────────────────────────────────────────────── */}
+          {/* Badges row */}
+          <TouchableOpacity
+            style={[styles.achieveMenuRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+            onPress={() => setActiveTab("badges")}
+          >
+            <Ionicons name="trophy-outline" size={24} color={colors.primary} />
+            <Text style={[styles.menuRowLabel, { color: colors.primary }]}>Achievements ({achievements.length}/{ALL_ACHIEVEMENT_DEFS.length})</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
+          </TouchableOpacity>
+
+          {/* ── Edit modal-style section ──────────────────────────────── */}
           {activeTab === "edit" && (
-            <Pressable onPress={() => setPendingTag(null)} style={{ padding: 16, paddingTop: 8 }}>
+            <Pressable onPress={() => setPendingTag(null)}
+              style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Edit Profile</Text>
               <InputField
                 label="Username"
                 value={draft.username}
@@ -467,19 +472,14 @@ export default function ProfileScreen() {
                   onChangeText={setNewTag}
                   onSubmitEditing={addHobby}
                 />
-                <TouchableOpacity
-                  onPress={addHobby}
-                  style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}
-                >
+                <TouchableOpacity onPress={addHobby} style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}>
                   <Ionicons name="add" size={20} color="#fff" />
                 </TouchableOpacity>
               </View>
 
-              {draft.hobbies.length > 0 ? (
+              {draft.hobbies.length > 0 && (
                 <>
-                  <Text style={[styles.hint, { color: colors.secondaryText }]}>
-                    Tap once to select for removal, tap again to delete.
-                  </Text>
+                  <Text style={[styles.hint, { color: colors.secondaryText }]}>Tap once to select, tap again to delete.</Text>
                   <View style={styles.tagWrap}>
                     {draft.hobbies.map((tag) => (
                       <TagChip
@@ -493,37 +493,32 @@ export default function ProfileScreen() {
                     ))}
                   </View>
                 </>
-              ) : (
-                <Text style={[styles.hint, { color: colors.secondaryText }]}>
-                  No hobbies added yet — add some above!
-                </Text>
               )}
 
-              <TouchableOpacity
-                onPress={requestSave}
-                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-              >
-                <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.saveBtnText}>Save Changes</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity onPress={() => setActiveTab("edit")} style={[styles.cancelSubBtn, { borderColor: colors.border }]}>
+                  <Text style={[{ color: colors.primary, fontWeight: "600" }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={requestSave} style={[styles.saveBtn, { backgroundColor: colors.primary, flex: 1 }]}>
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                </TouchableOpacity>
+              </View>
             </Pressable>
           )}
 
-          {/* ── Posts tab ────────────────────────────────────────────────── */}
+          {/* ── Posts sub-section ── */}
           {activeTab === "posts" && (
-            <View style={{ padding: 16, paddingTop: 8 }}>
+            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.postsSectionRow}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>My Posts</Text>
+                <Text style={[styles.subSectionTitle, { color: colors.primary }]}>My Posts</Text>
                 <TouchableOpacity onPress={() => router.push("/create-post" as any)}>
                   <Ionicons name="create-outline" size={22} color={colors.primary} />
                 </TouchableOpacity>
               </View>
               {myPosts.length === 0 ? (
-                <View style={[styles.postsEmpty, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.postsEmpty, { borderColor: colors.border }]}>
                   <Ionicons name="newspaper-outline" size={36} color={colors.secondaryText} />
-                  <Text style={[styles.postsEmptyText, { color: colors.secondaryText }]}>
-                    You haven't posted anything yet.
-                  </Text>
+                  <Text style={[styles.postsEmptyText, { color: colors.secondaryText }]}>No posts yet.</Text>
                   <TouchableOpacity
                     onPress={() => router.push("/create-post" as any)}
                     style={[styles.postsCreateBtn, { backgroundColor: colors.primary }]}
@@ -545,93 +540,44 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* ── Badges tab ───────────────────────────────────────────────── */}
+          {/* ── Badges sub-section ── */}
           {activeTab === "badges" && (
-            <View style={{ padding: 16, paddingTop: 8 }}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Achievements</Text>
-              <Text style={[styles.sectionSub, { color: colors.secondaryText }]}>
-                {achievements.length} / {ALL_ACHIEVEMENT_DEFS.length} earned
-              </Text>
+            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Achievements</Text>
+              <Text style={[styles.sectionSub, { color: colors.secondaryText }]}>{achievements.length} / {ALL_ACHIEVEMENT_DEFS.length} earned</Text>
               <View style={styles.achieveGrid}>
                 {ALL_ACHIEVEMENT_DEFS.map((def) => {
                   const earned = achievements.find((a) => a.id === def.id);
-                  return (
-                    <AchievementTile key={def.id} def={def} earned={earned} colors={colors} />
-                  );
+                  return <AchievementTile key={def.id} def={def} earned={earned} colors={colors} />;
                 })}
               </View>
             </View>
           )}
 
-          {/* ── Settings tab ─────────────────────────────────────────────── */}
+          {/* ── Settings sub-section ── */}
           {activeTab === "settings" && (
-            <View style={{ padding: 16, paddingTop: 8 }}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
-              <ToggleRow
-                label="Dark Mode"
-                sublabel={isDark ? "Currently dark" : "Currently light"}
-                value={isDark}
-                onToggle={toggleTheme}
-                colors={colors}
-              />
+            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Settings</Text>
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Notifications</Text>
-              <ToggleRow
-                label="Daily Practice Reminder"
-                sublabel="Get a reminder to practice each day"
-                value={dailyReminderEnabled}
-                onToggle={() => setDailyReminderEnabled(!dailyReminderEnabled)}
-                colors={colors}
-              />
+              <ToggleRow label="Dark Mode" sublabel={isDark ? "Currently dark" : "Currently light"} value={isDark} onToggle={toggleTheme} colors={colors} />
+              <ToggleRow label="Daily Practice Reminder" sublabel="Get reminded to practice each day" value={dailyReminderEnabled} onToggle={() => setDailyReminderEnabled(!dailyReminderEnabled)} colors={colors} />
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Tips & Hints</Text>
               <TouchableOpacity
-                style={[styles.actionRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.actionRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
                 onPress={handleResetTips}
-                activeOpacity={0.7}
               >
                 <Ionicons name="refresh-outline" size={18} color={colors.primary} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.actionRowLabel, { color: colors.text }]}>
-                    Reset dismissed tips
-                  </Text>
-                  <Text style={[styles.actionRowSub, { color: colors.secondaryText }]}>
-                    Show all tips and daily banners again
-                  </Text>
+                  <Text style={[styles.actionRowLabel, { color: colors.text }]}>Reset dismissed tips</Text>
                 </View>
-                {tipsResetDone && (
-                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                )}
+                {tipsResetDone && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
               </TouchableOpacity>
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Account</Text>
-              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.infoCard, { backgroundColor: colors.inputBackground, borderColor: colors.border, marginTop: 12 }]}>
                 <View style={styles.infoRow}>
                   <Ionicons name="mail-outline" size={18} color={colors.secondaryText} />
                   <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Email</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>
-                    {profile.email || "Not set"}
-                  </Text>
-                </View>
-                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.infoRow}>
-                  <Ionicons name="person-outline" size={18} color={colors.secondaryText} />
-                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Username</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>{profile.username || "Not set"}</Text>
-                </View>
-                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.infoRow}>
-                  <Ionicons name="location-outline" size={18} color={colors.secondaryText} />
-                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>City</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>{profile.city || "Not set"}</Text>
-                </View>
-              </View>
-
-              <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}>
-                <View style={styles.infoRow}>
-                  <Ionicons name="cloud-outline" size={18} color={colors.secondaryText} />
-                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Storage</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>Firebase Cloud</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{profile.email || "Not set"}</Text>
                 </View>
                 <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.infoRow}>
@@ -641,22 +587,15 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              {/* Log out */}
               <TouchableOpacity
-                style={[styles.logoutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.logoutBtn, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
                 onPress={() => setLogoutModalVisible(true)}
-                activeOpacity={0.7}
               >
                 <Ionicons name="log-out-outline" size={20} color={colors.text} />
                 <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
               </TouchableOpacity>
 
-              {/* Delete account */}
-              <TouchableOpacity
-                style={styles.deleteBtn}
-                onPress={() => setDeleteModalVisible(true)}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => setDeleteModalVisible(true)}>
                 <Ionicons name="trash-outline" size={18} color="#ef4444" />
                 <Text style={styles.deleteBtnText}>Delete Account</Text>
               </TouchableOpacity>
@@ -705,79 +644,93 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  headerTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.5 },
-  headerLogo: { width: 36, height: 36, resizeMode: "contain" },
 
-  // Hero
-  heroCard: {
-    alignItems: "center",
-    paddingVertical: 28,
-    paddingHorizontal: 20,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 20,
-  },
+  // Avatar section
+  avatarSection: { alignItems: "center", paddingTop: 24, paddingBottom: 12 },
   avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
-  avatarInitial: { color: "#fff", fontSize: 28, fontWeight: "800" },
-  heroName: { color: "#fff", fontSize: 20, fontWeight: "800", marginBottom: 4 },
-  heroLocationRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 4 },
-  heroLocation: { color: "rgba(255,255,255,0.8)", fontSize: 13 },
-  heroBio: { color: "rgba(255,255,255,0.75)", fontSize: 13, textAlign: "center", marginTop: 4 },
+  heroName: { fontSize: 22, fontWeight: "800" },
 
-  // Stats
-  statsRow: {
-    flexDirection: "row",
+  // Interests card
+  interestsCard: {
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 8,
     borderRadius: 16,
     borderWidth: 1,
-    overflow: "hidden",
+    padding: 16,
+    gap: 8,
   },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRightWidth: 1,
-    borderRightColor: "transparent",
-  },
-  statValue: { fontSize: 18, fontWeight: "800" },
-  statLabel: { fontSize: 11, marginTop: 2 },
-
-  // Tab selector
-  tabSelector: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
-  },
-  tabPill: {
-    flex: 1,
-    paddingVertical: 9,
+  interestsTitle: { fontSize: 17, fontWeight: "800", marginBottom: 4 },
+  interestsEmpty: { fontSize: 14, fontStyle: "italic" },
+  interestRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
   },
-  tabPillText: { fontSize: 14, fontWeight: "700" },
+  interestRowText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  editInterestsBtn: {
+    alignSelf: "flex-end",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  editInterestsBtnText: { fontWeight: "700", fontSize: 13 },
 
-  // Edit tab
+  // Streak badge
+  streakBadge: {
+    alignSelf: "flex-start",
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  streakBadgeText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+
+  // Menu rows
+  menuSection: { marginHorizontal: 16, marginTop: 16, gap: 10 },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  menuRowLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
+  achieveMenuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 10,
+  },
+
+  // Sub-sections (expandable)
+  subSection: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  subSectionTitle: { fontSize: 18, fontWeight: "800", marginBottom: 4 },
+
+  // Edit
   label: { fontWeight: "700", fontSize: 15, marginBottom: 8 },
   hobbyInputRow: {
     flexDirection: "row",
@@ -787,43 +740,40 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 4,
     paddingVertical: 4,
-    marginBottom: 8,
   },
   hobbyInput: { flex: 1, fontSize: 15, paddingVertical: 8 },
-  addHobbyBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hint: { fontSize: 12, marginBottom: 8, fontStyle: "italic" },
-  tagWrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
+  addHobbyBtn: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  hint: { fontSize: 12, fontStyle: "italic" },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 8 },
   saveBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 14,
     borderRadius: 14,
-    marginTop: 8,
+    marginTop: 4,
   },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  cancelSubBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
 
-  // Posts tab
-  postsSectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  postsEmpty: { padding: 28, borderRadius: 16, borderWidth: 1, alignItems: "center", gap: 10 },
+  // Posts
+  postsSectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  postsEmpty: { padding: 24, borderRadius: 12, borderWidth: 1, alignItems: "center", gap: 10 },
   postsEmptyText: { fontSize: 14, textAlign: "center" },
-  postsCreateBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
+  postsCreateBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   postsCreateBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  // Badges tab
-  sectionTitle: { fontSize: 17, fontWeight: "800", marginBottom: 4 },
-  sectionSub: { fontSize: 13, marginBottom: 14 },
-  achieveGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
+  // Badges
+  sectionSub: { fontSize: 13, marginBottom: 10 },
+  achieveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   achieveTile: {
     width: "47%",
     padding: 14,
@@ -836,134 +786,64 @@ const styles = StyleSheet.create({
   achieveDesc: { fontSize: 11, textAlign: "center" },
   achieveDate: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 2 },
 
-  // Settings tab
+  // Settings
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 8,
   },
   toggleLabel: { fontSize: 15, fontWeight: "600" },
   toggleSub: { fontSize: 12, marginTop: 2 },
-  toggleTrack: {
-    width: 46,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: "center",
-  },
+  toggleTrack: { width: 46, height: 26, borderRadius: 13, justifyContent: "center" },
   toggleThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
+    width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff",
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 3, elevation: 2,
   },
-  infoCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
-  },
+  infoCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  infoRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
   infoLabel: { fontSize: 14, width: 70 },
   infoValue: { fontSize: 14, fontWeight: "600", flex: 1, textAlign: "right" },
   infoDivider: { height: 1, marginLeft: 14 },
   actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 8,
+    flexDirection: "row", alignItems: "center", padding: 14,
+    borderRadius: 14, borderWidth: 1,
   },
   actionRowLabel: { fontSize: 15, fontWeight: "600" },
-  actionRowSub: { fontSize: 12, marginTop: 2 },
-
-  // Log out / Delete
   logoutBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 20,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, marginTop: 12,
   },
   logoutText: { fontSize: 16, fontWeight: "700" },
   deleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    marginTop: 10,
-    marginBottom: 8,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 12, marginTop: 6,
   },
   deleteBtnText: { color: "#ef4444", fontSize: 14, fontWeight: "600" },
 
-  // Delete account modal
+  // Delete modal
   modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center", alignItems: "center", padding: 24,
   },
-  deleteModal: {
-    width: "100%",
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 24,
-    gap: 12,
-  },
+  deleteModal: { width: "100%", borderRadius: 20, borderWidth: 1.5, padding: 24, gap: 12 },
   deleteTitle: { fontSize: 20, fontWeight: "800", textAlign: "center", marginTop: 4 },
   deleteBody: { fontSize: 14, lineHeight: 20, textAlign: "center" },
   checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+    alignItems: "center", justifyContent: "center", marginTop: 1,
   },
   checkLabel: { flex: 1, fontSize: 14, lineHeight: 20 },
   deleteHint: { fontSize: 13, marginTop: 4 },
   deleteInput: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 2,
+    borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 14,
+    paddingVertical: 10, fontSize: 16, fontWeight: "700", letterSpacing: 2,
   },
   deleteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  deleteCancelBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
+  deleteCancelBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   deleteCancelText: { fontSize: 15, fontWeight: "600" },
-  deleteConfirmBtn: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
+  deleteConfirmBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   deleteConfirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
