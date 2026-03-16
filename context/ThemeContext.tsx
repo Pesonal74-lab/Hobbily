@@ -7,7 +7,7 @@
  * On first launch (no saved pref) we fall back to the system colour scheme.
  */
 import { createContext, useContext, useState, useEffect } from "react";
-import { Appearance } from "react-native";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const THEME_KEY = "@hobbily_theme";
@@ -57,7 +57,8 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [isDark, setIsDark] = useState(Appearance.getColorScheme() === "dark");
+  // Default to light mode; AsyncStorage preference loaded below overrides this
+  const [isDark, setIsDark] = useState(false);
 
   // On mount: load persisted preference (overrides system default if set)
   useEffect(() => {

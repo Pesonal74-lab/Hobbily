@@ -1,13 +1,18 @@
 /**
- * Onboarding — shown on first launch and when not authenticated.
- * 6 steps: Welcome → Account (Firebase Auth) → Basic Info → Interests → Free Time → Feature Intro
+ * Onboarding — shown on first launch / when not authenticated.
  *
- * Step 1 creates a real Firebase Auth account (or signs in to existing one).
- * On finish: writes profile to Firestore with hasOnboarded:true, navigates to tabs.
+ * Steps:
+ *   0  Welcome          — Create Account / Log In + theme toggle
+ *   1  Account          — email + password form (sign-up OR sign-in)
+ *   2  Your Profile     — name, city, age + light/dark preference
+ *   3  Select Interests — hobby chip grid
+ *   4  Free Time        — how much spare time per day
+ *   5  App Features     — feature showcase, then finish → tabs
  */
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  Dimensions, Animated, Image, KeyboardAvoidingView, Platform, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  StyleSheet, Dimensions, Animated, KeyboardAvoidingView,
+  Platform, ActivityIndicator, Switch,
 } from "react-native";
 import { useState, useRef, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,95 +23,527 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { FreeTimePerDay } from "../types/Profile";
 
-const { width: SCREEN_W } = Dimensions.get("window");
+const { width: SW } = Dimensions.get("window");
 const TOTAL_STEPS = 6;
 
-// ── Hobby grid data ───────────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────────────────────────────────
 
-const HOBBY_OPTIONS: { label: string; icon: keyof typeof import("@expo/vector-icons").Ionicons.glyphMap }[] = [
-  { label: "Music", icon: "musical-notes-outline" },
-  { label: "Sports", icon: "football-outline" },
-  { label: "Photography", icon: "camera-outline" },
-  { label: "Drawing & Art", icon: "color-palette-outline" },
-  { label: "Coding", icon: "code-slash-outline" },
-  { label: "Cooking", icon: "restaurant-outline" },
-  { label: "Gaming", icon: "game-controller-outline" },
-  { label: "Reading", icon: "book-outline" },
-  { label: "Dance", icon: "body-outline" },
-  { label: "Film & Video", icon: "videocam-outline" },
-  { label: "Languages", icon: "globe-outline" },
-  { label: "Science", icon: "flask-outline" },
-  { label: "Writing", icon: "pencil-outline" },
-  { label: "Theater", icon: "happy-outline" },
-  { label: "Yoga", icon: "accessibility-outline" },
-  { label: "Fashion", icon: "shirt-outline" },
+const INTEREST_OPTIONS = [
+  "Music", "Gaming", "Art", "Sports", "Coding", "Language",
+  "Dance", "Cooking", "Photography", "Reading", "Film", "Writing",
 ];
 
-const FREE_TIME_OPTIONS: { label: string; sub: string; value: FreeTimePerDay }[] = [
-  { label: "< 30 min", sub: "Just a little", value: "<30" },
-  { label: "30 – 60 min", sub: "About an hour", value: "30-60" },
-  { label: "1 – 2 hours", sub: "Pretty free", value: "1-2h" },
-  { label: "2+ hours", sub: "Lots of time!", value: "2h+" },
+const FREE_TIME_OPTIONS: { label: string; value: FreeTimePerDay }[] = [
+  { label: "Less than 30 min", value: "<30" },
+  { label: "30 – 60 min",      value: "30-60" },
+  { label: "1 – 2 hours",      value: "1-2h" },
+  { label: "2+ hours",         value: "2h+" },
 ];
 
-const FEATURES = [
-  { icon: "calendar-outline" as const, title: "Manage your time", body: "Schedule hobby sessions, track habits, and build daily streaks." },
-  { icon: "compass-outline" as const, title: "Discover programs", body: "Find real clubs, workshops, and programs near you." },
-  { icon: "chatbubbles-outline" as const, title: "Connect with peers", body: "Chat with others who share your interests in hobby channels." },
+const FEATURE_ROWS = [
+  { icon: "search-outline"      as const, label: "Discover opportunities" },
+  { icon: "time-outline"        as const, label: "Manage your time" },
+  { icon: "chatbubbles-outline" as const, label: "Connect with peers" },
 ];
 
-// ── Translate Firebase auth error codes into readable messages ────────────────
+// ── Auth error → readable string ──────────────────────────────────────────────
 
-function friendlyAuthError(code: string): string {
+function friendlyError(code: string): string {
   switch (code) {
-    case "auth/email-already-in-use": return "An account with this email already exists. Try signing in instead.";
-    case "auth/invalid-email": return "Please enter a valid email address.";
-    case "auth/weak-password": return "Password must be at least 6 characters.";
-    case "auth/user-not-found": return "No account found with this email.";
-    case "auth/wrong-password": return "Incorrect password. Please try again.";
-    case "auth/invalid-credential": return "Incorrect email or password.";
-    case "auth/too-many-requests": return "Too many attempts. Please wait a moment and try again.";
-    default: return "Something went wrong. Please try again.";
+    case "auth/email-already-in-use":  return "An account with this email already exists. Try logging in instead.";
+    case "auth/invalid-email":         return "Please enter a valid email address.";
+    case "auth/weak-password":         return "Password must be at least 6 characters.";
+    case "auth/user-not-found":        return "No account found with this email.";
+    case "auth/wrong-password":        return "Incorrect password. Please try again.";
+    case "auth/invalid-credential":    return "Incorrect email or password.";
+    case "auth/too-many-requests":     return "Too many attempts. Please wait a moment.";
+    default:                           return "Something went wrong. Please try again.";
   }
+}
+
+// ── Reusable input ─────────────────────────────────────────────────────────────
+
+function Field({
+  icon, placeholder, value, onChangeText,
+  secureTextEntry, keyboardType, colors, autoCapitalize,
+}: {
+  icon?: keyof typeof Ionicons.glyphMap;
+  placeholder: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  secureTextEntry?: boolean;
+  keyboardType?: any;
+  colors: any;
+  autoCapitalize?: any;
+}) {
+  return (
+    <View style={[styles.field, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {icon && (
+        <Ionicons name={icon} size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
+      )}
+      <TextInput
+        style={[styles.fieldText, { color: colors.text }]}
+        placeholder={placeholder}
+        placeholderTextColor={colors.secondaryText}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize ?? "none"}
+        autoCorrect={false}
+      />
+    </View>
+  );
+}
+
+// ── Step 0: Welcome ───────────────────────────────────────────────────────────
+
+function StepWelcome({
+  colors, isDark, toggleTheme, onCreateAccount, onLogIn,
+}: {
+  colors: any; isDark: boolean; toggleTheme: () => void;
+  onCreateAccount: () => void; onLogIn: () => void;
+}) {
+  return (
+    <View style={styles.welcomeRoot}>
+      {/* Theme toggle — top right */}
+      <TouchableOpacity
+        onPress={toggleTheme}
+        style={[styles.themeToggle, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <Ionicons name={isDark ? "sunny-outline" : "moon-outline"} size={20} color={colors.primary} />
+      </TouchableOpacity>
+
+      {/* Logo area */}
+      <View style={styles.welcomeCenter}>
+        <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
+          <Ionicons name="compass" size={52} color="#fff" />
+        </View>
+        <Text style={[styles.appName, { color: colors.primary }]}>HOBBILY</Text>
+        <Text style={[styles.tagline, { color: colors.secondaryText }]}>
+          Discover your interests{"\n"}&amp; build your future
+        </Text>
+      </View>
+
+      {/* Buttons */}
+      <View style={styles.welcomeButtons}>
+        <TouchableOpacity
+          style={[styles.bigBtn, { backgroundColor: colors.accent }]}
+          onPress={onCreateAccount}
+        >
+          <Text style={styles.bigBtnText}>Create Account</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.bigBtnOutline, { borderColor: colors.primary }]}
+          onPress={onLogIn}
+        >
+          <Text style={[styles.bigBtnOutlineText, { color: colors.primary }]}>Log In</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ── Step 1: Account ───────────────────────────────────────────────────────────
+
+function StepAccount({
+  colors, signInMode, setSignInMode,
+  email, setEmail, password, setPassword,
+  authError, setAuthError, authLoading, canNext, onNext,
+}: any) {
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.authContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Title */}
+        <Text style={[styles.authTitle, { color: colors.primary }]}>
+          {signInMode ? "Log In" : "Create Account"}
+        </Text>
+
+        {/* Toggle between modes */}
+        <TouchableOpacity
+          onPress={() => { setSignInMode(!signInMode); setAuthError(""); }}
+          style={styles.authSwitchRow}
+        >
+          <Text style={[styles.authSwitchText, { color: colors.secondaryText }]}>
+            {signInMode ? "Don't have an account? " : "Already have an account? "}
+            <Text style={[styles.authSwitchLink, { color: colors.accent }]}>
+              {signInMode ? "Create one" : "Log In"}
+            </Text>
+          </Text>
+        </TouchableOpacity>
+
+        {/* Fields */}
+        <View style={styles.authFields}>
+          <Field
+            icon="mail-outline"
+            placeholder="Email address"
+            value={email}
+            onChangeText={(v) => { setEmail(v); setAuthError(""); }}
+            keyboardType="email-address"
+            colors={colors}
+          />
+          <Field
+            icon="lock-closed-outline"
+            placeholder="Password (min 6 characters)"
+            value={password}
+            onChangeText={(v) => { setPassword(v); setAuthError(""); }}
+            secureTextEntry
+            colors={colors}
+          />
+        </View>
+
+        {/* Error */}
+        {authError ? (
+          <View style={[styles.errorBox, { backgroundColor: colors.danger + "18", borderColor: colors.danger }]}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.danger} style={{ marginRight: 8 }} />
+            <Text style={[styles.errorText, { color: colors.danger }]}>{authError}</Text>
+          </View>
+        ) : null}
+
+        {/* Forgot password (sign-in only) */}
+        {signInMode && (
+          <TouchableOpacity style={{ marginTop: 4, alignSelf: "flex-end" }}>
+            <Text style={[styles.forgotText, { color: colors.secondaryText }]}>
+              Forgot password?
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Submit */}
+        <TouchableOpacity
+          style={[
+            styles.submitBtn,
+            { backgroundColor: colors.accent, opacity: canNext && !authLoading ? 1 : 0.45 },
+          ]}
+          onPress={canNext && !authLoading ? onNext : undefined}
+        >
+          {authLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.submitBtnText}>
+              {signInMode ? "Log In" : "Create Account"}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// ── Step 2: Your Profile ──────────────────────────────────────────────────────
+
+function StepYourProfile({
+  colors, isDark, toggleTheme,
+  username, setUsername, age, setAge, city, setCity,
+  ageError, canNext, onNext,
+}: any) {
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.profileContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Avatar placeholder */}
+        <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
+          <Ionicons name="person-outline" size={48} color={colors.primary} />
+        </View>
+
+        <Text style={[styles.stepTitle, { color: colors.primary }]}>Your Profile</Text>
+        <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
+          You can change these later
+        </Text>
+
+        <View style={styles.profileFields}>
+          <Field
+            icon="person-outline"
+            placeholder="Display name *"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="words"
+            colors={colors}
+          />
+          <Field
+            icon="location-outline"
+            placeholder="City (optional)"
+            value={city}
+            onChangeText={setCity}
+            autoCapitalize="words"
+            colors={colors}
+          />
+          <Field
+            icon="calendar-outline"
+            placeholder="Age (optional, 13–150)"
+            value={age}
+            onChangeText={setAge}
+            keyboardType="number-pad"
+            colors={colors}
+          />
+          {ageError ? (
+            <Text style={[styles.fieldError, { color: colors.danger }]}>{ageError}</Text>
+          ) : null}
+        </View>
+
+        {/* Appearance preference */}
+        <View style={[styles.appearanceRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Ionicons
+            name={isDark ? "moon-outline" : "sunny-outline"}
+            size={20}
+            color={colors.primary}
+            style={{ marginRight: 12 }}
+          />
+          <Text style={[styles.appearanceLabel, { color: colors.text }]}>
+            {isDark ? "Dark mode" : "Light mode"}
+          </Text>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: colors.border, true: colors.primary + "80" }}
+            thumbColor={isDark ? colors.primary : colors.secondaryText}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
+          onPress={canNext ? onNext : undefined}
+        >
+          <Text style={styles.nextBtnText}>Next</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// ── Step 3: Select Interests ──────────────────────────────────────────────────
+
+function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
+  const [customInput, setCustomInput] = useState("");
+
+  const customHobbies: string[] = selected.filter(
+    (h: string) => !INTEREST_OPTIONS.includes(h)
+  );
+
+  function addCustom() {
+    const label = customInput.trim();
+    if (!label || selected.includes(label)) return;
+    onToggle(label);
+    setCustomInput("");
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.stepHeaderPad}>
+        <Text style={[styles.stepTitle, { color: colors.primary }]}>Select Interests</Text>
+        <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
+          Pick at least one — you can add more later
+        </Text>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.interestScrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Predefined grid */}
+        <View style={styles.interestGrid}>
+          {INTEREST_OPTIONS.map((label) => {
+            const active = selected.includes(label);
+            return (
+              <TouchableOpacity
+                key={label}
+                onPress={() => onToggle(label)}
+                style={[
+                  styles.interestChip,
+                  {
+                    backgroundColor: active ? colors.accent : colors.secondary,
+                    borderColor: active ? colors.accent : colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.interestChipText, { color: active ? "#fff" : colors.primary }]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Custom hobby input */}
+        <View style={styles.customRow}>
+          <View style={[styles.field, { backgroundColor: colors.card, borderColor: colors.border, flex: 1 }]}>
+            <TextInput
+              style={[styles.fieldText, { color: colors.text }]}
+              placeholder="Add your own..."
+              placeholderTextColor={colors.secondaryText}
+              value={customInput}
+              onChangeText={setCustomInput}
+              onSubmitEditing={addCustom}
+              returnKeyType="done"
+            />
+          </View>
+          <TouchableOpacity
+            onPress={addCustom}
+            style={[styles.customAddBtn, { backgroundColor: colors.primary }]}
+          >
+            <Ionicons name="add" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Custom chips */}
+        {customHobbies.length > 0 && (
+          <View style={styles.customChipsRow}>
+            {customHobbies.map((h: string) => (
+              <TouchableOpacity
+                key={h}
+                onPress={() => onToggle(h)}
+                style={[styles.customChip, { backgroundColor: colors.accent + "20", borderColor: colors.accent }]}
+              >
+                <Text style={[styles.customChipText, { color: colors.accent }]}>{h}</Text>
+                <Ionicons name="close-circle" size={14} color={colors.accent} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.stepFooter}>
+        <TouchableOpacity
+          style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
+          onPress={canNext ? onNext : undefined}
+        >
+          <Text style={styles.nextBtnText}>Continue</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ── Step 4: Free Time ─────────────────────────────────────────────────────────
+
+function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
+  return (
+    <View style={styles.stepContentPad}>
+      <Text style={[styles.freeTimeQ, { color: colors.primary }]}>
+        How much free time{"\n"}do you have per day?
+      </Text>
+
+      <View style={styles.freeTimeList}>
+        {FREE_TIME_OPTIONS.map((opt) => {
+          const active = value === opt.value;
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => onSelect(opt.value)}
+              style={[
+                styles.freeTimeCard,
+                {
+                  backgroundColor: active ? colors.accent : colors.card,
+                  borderColor: active ? colors.accent : colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.text }]}>
+                {opt.label}
+              </Text>
+              {active && <Ionicons name="checkmark-circle" size={20} color="#fff" />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <TouchableOpacity
+        style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
+        onPress={canNext ? onNext : undefined}
+      >
+        <Text style={styles.nextBtnText}>Continue</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Step 5: App Features ──────────────────────────────────────────────────────
+
+function StepFeatures({ colors, onFinish }: { colors: any; onFinish: () => void }) {
+  return (
+    <View style={styles.stepContentPad}>
+      <Text style={[styles.stepTitle, { color: colors.primary, textAlign: "center", marginBottom: 8 }]}>
+        You're all set!
+      </Text>
+      <Text style={[styles.stepSub, { color: colors.secondaryText, textAlign: "center", marginBottom: 32 }]}>
+        Here's what you can do with Hobbily
+      </Text>
+
+      <View style={styles.featureList}>
+        {FEATURE_ROWS.map((f) => (
+          <View
+            key={f.label}
+            style={[styles.featureCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <View style={[styles.featureIconWrap, { backgroundColor: colors.accent + "20" }]}>
+              <Ionicons name={f.icon} size={24} color={colors.accent} />
+            </View>
+            <Text style={[styles.featureLabel, { color: colors.primary }]}>{f.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      <TouchableOpacity
+        style={[styles.nextBtn, { backgroundColor: colors.accent, marginTop: "auto" as any }]}
+        onPress={onFinish}
+      >
+        <Text style={styles.nextBtnText}>Get Started</Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function OnboardingScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const { saveProfile, profile } = useProfile();
   const { signUp, signIn, user } = useAuth();
 
   const [step, setStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Form state
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Auth state
   const [signInMode, setSignInMode] = useState(false);
-  const [authError, setAuthError] = useState("");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError]   = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  // Profile state
   const [username, setUsername] = useState("");
-  const [age, setAge] = useState("");
-  const [city, setCity] = useState("");
+  const [age, setAge]           = useState("");
+  const [city, setCity]         = useState("");
   const [selectedHobbies, setSelectedHobbies] = useState<string[]>([]);
   const [freeTime, setFreeTime] = useState<FreeTimePerDay | "">("");
 
-  // If user is already authenticated on mount (e.g. returning mid-onboarding),
-  // skip the account-creation steps and go straight to basic info
+  // If user is already authenticated mid-onboarding, skip auth step
   useEffect(() => {
-    if (user && step === 0) {
-      setStep(2);
-    }
-  }, []); // intentionally runs once on mount only
+    if (user && step === 0) setStep(2);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function animateTo(nextStep: number) {
-    const direction = nextStep > step ? -1 : 1;
-    Animated.timing(slideAnim, { toValue: direction * SCREEN_W * 0.3, duration: 150, useNativeDriver: true }).start(() => {
-      setStep(nextStep);
-      slideAnim.setValue(-direction * SCREEN_W * 0.3);
-      Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+  // ── Navigation ──────────────────────────────────────────────────────────────
+
+  function animateTo(next: number) {
+    const dir = next > step ? -1 : 1;
+    Animated.timing(slideAnim, { toValue: dir * SW * 0.3, duration: 140, useNativeDriver: true }).start(() => {
+      setStep(next);
+      slideAnim.setValue(-dir * SW * 0.3);
+      Animated.timing(slideAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start();
     });
   }
 
@@ -119,26 +556,27 @@ export default function OnboardingScreen() {
     );
   }
 
-  // Step 1: Create or sign in to Firebase account
-  async function handleAccountContinue() {
+  // ── Auth submit ─────────────────────────────────────────────────────────────
+
+  async function handleAuthSubmit() {
     setAuthError("");
     setAuthLoading(true);
     try {
       if (signInMode) {
         await signIn(email.trim(), password);
-        // Signed in — if already onboarded, _layout.tsx will redirect to tabs
-        // Otherwise continue onboarding from step 2
-        animateTo(2);
+        animateTo(2); // existing user skips profile setup
       } else {
         await signUp(email.trim(), password);
-        goNext();
+        goNext(); // new user fills out profile
       }
     } catch (err: any) {
-      setAuthError(friendlyAuthError(err.code ?? ""));
+      setAuthError(friendlyError(err.code ?? ""));
     } finally {
       setAuthLoading(false);
     }
   }
+
+  // ── Finish ──────────────────────────────────────────────────────────────────
 
   async function finish() {
     await saveProfile({
@@ -147,7 +585,7 @@ export default function OnboardingScreen() {
       email: email.trim(),
       age,
       city: city.trim(),
-      preferredCity: city.trim() || "London",
+      preferredCity: city.trim() || "",
       hobbies: selectedHobbies,
       freeTimePerDay: (freeTime as FreeTimePerDay) || "30-60",
       hasOnboarded: true,
@@ -155,30 +593,32 @@ export default function OnboardingScreen() {
     router.replace("/(tabs)/" as any);
   }
 
-  // ── Step canContinue rules ────────────────────────────────────────────────
+  // ── Validation ──────────────────────────────────────────────────────────────
 
-  const emailValid = email.trim().includes("@") && email.trim().includes(".");
-  const passwordValid = password.length >= 6;
-  const ageNum = parseInt(age, 10);
-  const ageValid = age === "" || (!isNaN(ageNum) && ageNum >= 13 && ageNum <= 150);
-  const ageError = age !== "" && !ageValid ? "Age must be between 13 and 150." : "";
+  const emailOk    = email.trim().includes("@") && email.trim().includes(".");
+  const passwordOk = password.length >= 6;
+  const ageNum     = parseInt(age, 10);
+  const ageValid   = age === "" || (!isNaN(ageNum) && ageNum >= 13 && ageNum <= 150);
+  const ageError   = age !== "" && !ageValid ? "Age must be between 13 and 150." : "";
 
-  const canContinue: boolean[] = [
-    true,                                        // 0: welcome
-    emailValid && passwordValid,                 // 1: account
-    username.trim().length >= 2 && ageValid,     // 2: basic info
-    selectedHobbies.length >= 1,                 // 3: interests
-    freeTime !== "",                             // 4: free time
-    true,                                        // 5: feature intro
+  const canContinue = [
+    true,                                      // 0 welcome
+    emailOk && passwordOk,                     // 1 account
+    username.trim().length >= 2 && ageValid,   // 2 profile
+    selectedHobbies.length >= 1,               // 3 interests
+    freeTime !== "",                           // 4 free time
+    true,                                      // 5 features
   ];
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Progress dots */}
+    <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* Back button + progress dots (steps 1-5) */}
       {step > 0 && (
-        <View style={styles.progressRow}>
-          <TouchableOpacity onPress={goBack} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={colors.text} />
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={goBack} style={styles.topBackBtn}>
+            <Ionicons name="arrow-back" size={22} color={colors.primary} />
           </TouchableOpacity>
           <View style={styles.dots}>
             {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
@@ -186,7 +626,7 @@ export default function OnboardingScreen() {
                 key={i}
                 style={[
                   styles.dot,
-                  { backgroundColor: i <= step ? colors.primary : colors.border },
+                  { backgroundColor: i <= step ? colors.accent : colors.border },
                   i === step && styles.dotActive,
                 ]}
               />
@@ -196,622 +636,278 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <Animated.View style={[styles.stepWrap, { transform: [{ translateX: slideAnim }] }]}>
-          {step === 0 && (
-            <StepWelcome
-              colors={colors}
-              onStart={goNext}
-              onLogin={() => { setSignInMode(true); animateTo(1); }}
-            />
-          )}
-          {step === 1 && (
-            <StepAccount
-              colors={colors}
-              email={email} setEmail={setEmail}
-              password={password} setPassword={setPassword}
-              signInMode={signInMode} setSignInMode={setSignInMode}
-              authError={authError} setAuthError={setAuthError}
-              authLoading={authLoading}
-              canNext={canContinue[1]}
-              onNext={handleAccountContinue}
-              onClose={goBack}
-            />
-          )}
-          {step === 2 && (
-            <StepBasicInfo
-              colors={colors}
-              username={username} setUsername={setUsername}
-              age={age} setAge={setAge}
-              city={city} setCity={setCity}
-              ageError={ageError}
-              canNext={canContinue[2]} onNext={goNext}
-            />
-          )}
-          {step === 3 && (
-            <StepInterests
-              colors={colors}
-              selected={selectedHobbies}
-              onToggle={toggleHobby}
-              canNext={canContinue[3]}
-              onNext={goNext}
-            />
-          )}
-          {step === 4 && (
-            <StepFreeTime
-              colors={colors}
-              value={freeTime}
-              onSelect={setFreeTime}
-              canNext={canContinue[4]}
-              onNext={goNext}
-            />
-          )}
-          {step === 5 && <StepFeatures colors={colors} onFinish={finish} />}
-        </Animated.View>
-      </KeyboardAvoidingView>
+      <Animated.View style={[styles.stepWrap, { transform: [{ translateX: slideAnim }] }]}>
+        {step === 0 && (
+          <StepWelcome
+            colors={colors}
+            isDark={isDark}
+            toggleTheme={toggleTheme}
+            onCreateAccount={() => { setSignInMode(false); animateTo(1); }}
+            onLogIn={() => { setSignInMode(true); animateTo(1); }}
+          />
+        )}
+        {step === 1 && (
+          <StepAccount
+            colors={colors}
+            signInMode={signInMode} setSignInMode={setSignInMode}
+            email={email} setEmail={setEmail}
+            password={password} setPassword={setPassword}
+            authError={authError} setAuthError={setAuthError}
+            authLoading={authLoading}
+            canNext={canContinue[1]}
+            onNext={handleAuthSubmit}
+          />
+        )}
+        {step === 2 && (
+          <StepYourProfile
+            colors={colors}
+            isDark={isDark} toggleTheme={toggleTheme}
+            username={username} setUsername={setUsername}
+            age={age} setAge={setAge}
+            city={city} setCity={setCity}
+            ageError={ageError}
+            canNext={canContinue[2]}
+            onNext={goNext}
+          />
+        )}
+        {step === 3 && (
+          <StepInterests
+            colors={colors}
+            selected={selectedHobbies}
+            onToggle={toggleHobby}
+            canNext={canContinue[3]}
+            onNext={goNext}
+          />
+        )}
+        {step === 4 && (
+          <StepFreeTime
+            colors={colors}
+            value={freeTime}
+            onSelect={setFreeTime}
+            canNext={canContinue[4]}
+            onNext={goNext}
+          />
+        )}
+        {step === 5 && (
+          <StepFeatures colors={colors} onFinish={finish} />
+        )}
+      </Animated.View>
     </SafeAreaView>
-  );
-}
-
-// ── Step 0: Welcome ───────────────────────────────────────────────────────────
-
-function StepWelcome({ colors, onStart, onLogin }: { colors: any; onStart: () => void; onLogin: () => void }) {
-  return (
-    <View style={styles.welcomeContainer}>
-      {/* Top section: logo + title + tagline */}
-      <View style={styles.welcomeTop}>
-        <Image source={require("../assets/images/Hobbily_Logo.png")} style={styles.welcomeLogo} />
-        <Text style={[styles.welcomeTitle, { color: colors.primary }]}>
-          Welcome to{"\n"}
-          <Text style={styles.welcomeTitleBold}>Hobbily</Text>
-        </Text>
-        <Text style={[styles.welcomeTagline, { color: colors.primary }]}>
-          Discover your interests{"\n"}&amp;{"\n"}Build your future
-        </Text>
-      </View>
-
-      {/* Bottom section: two big buttons */}
-      <View style={styles.welcomeButtons}>
-        <TouchableOpacity
-          style={[styles.welcomeBtn, { backgroundColor: colors.primary }]}
-          onPress={onLogin}
-        >
-          <Text style={styles.welcomeBtnText}>Login</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.welcomeBtn, { backgroundColor: colors.primary, marginTop: 16 }]}
-          onPress={onStart}
-        >
-          <Text style={styles.welcomeBtnText}>Sign in</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Step 1: Account ───────────────────────────────────────────────────────────
-
-function IconInput({ icon, placeholder, value, onChangeText, secureTextEntry, keyboardType, autoCapitalize, colors }: any) {
-  return (
-    <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-      <Ionicons name={icon} size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
-      <TextInput
-        style={[styles.iconInputText, { color: colors.text }]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.accent}
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-        autoCapitalize={autoCapitalize ?? "none"}
-        autoCorrect={false}
-      />
-    </View>
-  );
-}
-
-function StepAccount({
-  colors, email, setEmail, password, setPassword,
-  signInMode, setSignInMode, authError, setAuthError,
-  authLoading, canNext, onNext, onClose,
-}: any) {
-  return (
-    <View style={styles.authSheet}>
-      {/* X close button */}
-      <TouchableOpacity
-        onPress={onClose}
-        style={[styles.authCloseBtn, { backgroundColor: colors.primary }]}
-      >
-        <Ionicons name="close" size={20} color="#fff" />
-      </TouchableOpacity>
-
-      <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.authTitle, { color: colors.text }]}>
-          {signInMode ? "Login" : "Sign Up"}
-        </Text>
-        <TouchableOpacity onPress={() => { setSignInMode(!signInMode); setAuthError(""); }}>
-          <Text style={[styles.authSwitch, { color: colors.text }]}>
-            {signInMode ? "Don't have account? " : "Already registered? "}
-            <Text style={{ fontWeight: "800", textDecorationLine: "underline" }}>
-              {signInMode ? "Sign Up" : "Sign in"}
-            </Text>
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.authFields}>
-          {!signInMode && (
-            <IconInput
-              icon="person-outline"
-              placeholder="Name"
-              value=""
-              onChangeText={() => {}}
-              colors={colors}
-            />
-          )}
-          <IconInput
-            icon="mail-outline"
-            placeholder="Email"
-            value={email}
-            onChangeText={(v: string) => { setEmail(v); setAuthError(""); }}
-            keyboardType="email-address"
-            colors={colors}
-          />
-          <IconInput
-            icon="lock-closed-outline"
-            placeholder="Password"
-            value={password}
-            onChangeText={(v: string) => { setPassword(v); setAuthError(""); }}
-            secureTextEntry
-            colors={colors}
-          />
-          {!signInMode && (
-            <TouchableOpacity
-              style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-            >
-              <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
-              <Text style={[styles.iconInputText, { color: colors.accent }]}>Date of Birth</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {authError ? (
-          <View style={[styles.errorBox, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
-            <Ionicons name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 8 }} />
-            <Text style={[styles.errorText, { color: "#DC2626" }]}>{authError}</Text>
-          </View>
-        ) : null}
-
-        {signInMode && (
-          <TouchableOpacity style={{ alignItems: "center", marginTop: 8 }}>
-            <Text style={[styles.authSwitch, { color: colors.text }]}>
-              <Text style={{ textDecorationLine: "underline" }}>Forgot Password?</Text>
-            </Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      {/* Arrow submit button */}
-      <TouchableOpacity
-        style={[styles.authArrowBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
-        onPress={canNext && !authLoading ? onNext : undefined}
-      >
-        {authLoading
-          ? <ActivityIndicator color="#fff" />
-          : <Ionicons name="arrow-forward" size={24} color="#fff" />
-        }
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ── Step 2: Basic Info ────────────────────────────────────────────────────────
-
-function StepBasicInfo({ colors, username, setUsername, age, setAge, city, setCity, ageError, canNext, onNext }: any) {
-  return (
-    <ScrollView contentContainerStyle={styles.infoContent} keyboardShouldPersistTaps="handled">
-      {/* Avatar placeholder */}
-      <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
-        <Ionicons name="person-outline" size={52} color={colors.primary} />
-      </View>
-
-      <View style={styles.infoFields}>
-        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-          <TextInput
-            style={[styles.iconInputText, { color: colors.text }]}
-            placeholder="Name"
-            placeholderTextColor={colors.accent}
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="words"
-          />
-        </View>
-
-        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-          <TextInput
-            style={[styles.iconInputText, { color: colors.text }]}
-            placeholder="City"
-            placeholderTextColor={colors.accent}
-            value={city}
-            onChangeText={setCity}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-        >
-          <Text style={[styles.iconInputText, { color: age ? colors.text : colors.accent }]}>
-            {age || "Date of Birth"}
-          </Text>
-          <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
-        </TouchableOpacity>
-        {ageError ? <Text style={[styles.fieldError, { color: colors.danger }]}>{ageError}</Text> : null}
-      </View>
-
-      <TouchableOpacity
-        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
-        onPress={canNext ? onNext : undefined}
-      >
-        <Text style={styles.nextBtnText}>Next</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-}
-
-// ── Step 3: Interests ─────────────────────────────────────────────────────────
-
-const PREDEFINED_LABELS = new Set(HOBBY_OPTIONS.map((h) => h.label));
-
-// Simplified interest grid matching mockup (2-column pill chips)
-const INTEREST_OPTIONS = [
-  { label: "Music" }, { label: "Gaming" },
-  { label: "Art" }, { label: "Sports" },
-  { label: "Coding" }, { label: "Language" },
-  { label: "Dance" }, { label: "Cooking" },
-  { label: "Photography" }, { label: "Reading" },
-  { label: "Other.." },
-];
-
-function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
-  const [customInput, setCustomInput] = useState("");
-
-  const customHobbies: string[] = selected.filter(
-    (h: string) => !PREDEFINED_LABELS.has(h) && !INTEREST_OPTIONS.some((o) => o.label === h)
-  );
-
-  function addCustomHobby() {
-    const label = customInput.trim();
-    if (!label) return;
-    if (!selected.includes(label)) onToggle(label);
-    setCustomInput("");
-  }
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.stepHeader}>
-        <Text style={[styles.interestTitle, { color: colors.primary }]}>Select Interest</Text>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
-        <View style={styles.interestGrid}>
-          {INTEREST_OPTIONS.map((h) => {
-            const isOther = h.label === "Other..";
-            const active = selected.includes(h.label);
-            return (
-              <TouchableOpacity
-                key={h.label}
-                onPress={() => {
-                  if (!isOther) onToggle(h.label);
-                }}
-                style={[
-                  styles.interestChip,
-                  {
-                    backgroundColor: active ? colors.accent : colors.primary,
-                    borderColor: "transparent",
-                  },
-                ]}
-              >
-                <Text style={styles.interestChipText}>{h.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {customHobbies.length > 0 && (
-          <View style={[styles.customChipsRow, { paddingHorizontal: 16 }]}>
-            {customHobbies.map((h: string) => (
-              <TouchableOpacity
-                key={h}
-                onPress={() => onToggle(h)}
-                style={[styles.customChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}
-              >
-                <Text style={[styles.customChipText, { color: colors.primary }]}>{h}</Text>
-                <Ionicons name="close-circle" size={14} color={colors.primary} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      <View style={styles.stepFooter}>
-        <TouchableOpacity
-          style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
-          onPress={canNext ? onNext : undefined}
-        >
-          <Text style={styles.nextBtnText}>Continue</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Step 4: Free Time ─────────────────────────────────────────────────────────
-
-const FREE_TIME_MOCKUP = [
-  { label: "Less than 30 min", value: "<30" as const },
-  { label: "30 - 60min", value: "30-60" as const },
-  { label: "1 - 2 hour", value: "1-2h" as const },
-  { label: "Set time", value: "2h+" as const },
-];
-
-function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
-  return (
-    <View style={styles.stepContent}>
-      <Text style={[styles.freeTimeQuestion, { color: colors.primary }]}>
-        How much free time{"\n"}do you have ?
-      </Text>
-
-      <View style={styles.freeTimeOptions}>
-        {FREE_TIME_MOCKUP.map((opt) => {
-          const active = value === opt.value;
-          return (
-            <TouchableOpacity
-              key={opt.value}
-              onPress={() => onSelect(opt.value)}
-              style={[
-                styles.freeTimeCard,
-                {
-                  backgroundColor: active ? colors.primary : colors.inputBackground,
-                  borderColor: active ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.accent }]}>{opt.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <TouchableOpacity
-        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
-        onPress={canNext ? onNext : undefined}
-      >
-        <Text style={styles.nextBtnText}>Continue</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ── Step 5: Feature Intro ─────────────────────────────────────────────────────
-
-const FEATURE_ROWS = [
-  { icon: "search-outline" as const, label: "Discover opportunities" },
-  { icon: "time-outline" as const, label: "Manage your time" },
-  { icon: "home-outline" as const, label: "Join community" },
-];
-
-function StepFeatures({ colors, onFinish }: { colors: any; onFinish: () => void }) {
-  return (
-    <View style={styles.stepContent}>
-      <Text style={[styles.featuresTitleLg, { color: colors.primary }]}>App Features</Text>
-
-      <View style={styles.featureRows}>
-        {FEATURE_ROWS.map((f) => (
-          <TouchableOpacity
-            key={f.label}
-            style={[styles.featureRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-          >
-            <Ionicons name={f.icon} size={26} color={colors.primary} style={{ marginRight: 14 }} />
-            <Text style={[styles.featureRowLabel, { color: colors.accent }]}>{f.label}</Text>
-            <View style={[styles.featureRowChevron, { backgroundColor: colors.primary }]}>
-              <Ionicons name="chevron-forward" size={16} color="#fff" />
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <TouchableOpacity
-        style={[styles.nextBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginTop: "auto" }]}
-        onPress={onFinish}
-      >
-        <Text style={[styles.nextBtnText, { color: colors.primary }]}>Continue</Text>
-      </TouchableOpacity>
-    </View>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  progressRow: {
+  root: { flex: 1 },
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingVertical: 10,
   },
-  backBtn: { width: 40, height: 40, justifyContent: "center" },
+  topBackBtn: { width: 40, height: 40, justifyContent: "center" },
   dots: { flexDirection: "row", gap: 6, alignItems: "center" },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  dotActive: { width: 20, height: 6, borderRadius: 3 },
+  dotActive: { width: 22, height: 6, borderRadius: 3 },
   stepWrap: { flex: 1 },
-  stepContent: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 24,
+
+  // ── Shared ──
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 15,
   },
-  stepHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 12 },
-  stepFooter: { paddingHorizontal: 24, paddingBottom: 28 },
-  fieldError: { fontSize: 12, marginTop: -8, marginBottom: 10, paddingHorizontal: 4 },
-  // Error box
+  fieldText: { flex: 1, fontSize: 15 },
+  fieldError: { fontSize: 12, marginTop: 2, marginLeft: 4 },
+  nextBtn: {
+    paddingVertical: 17,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  nextBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  stepTitle: { fontSize: 24, fontWeight: "800", marginBottom: 6 },
+  stepSub: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
+
+  // ── Welcome ──
+  welcomeRoot: {
+    flex: 1,
+    paddingHorizontal: 28,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  themeToggle: {
+    alignSelf: "flex-end",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  welcomeCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+  },
+  logoCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  appName: { fontSize: 34, fontWeight: "900", letterSpacing: 4 },
+  tagline: { fontSize: 16, textAlign: "center", lineHeight: 24, fontStyle: "italic" },
+  welcomeButtons: { gap: 14 },
+  bigBtn: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  bigBtnText: { color: "#fff", fontWeight: "800", fontSize: 17 },
+  bigBtnOutline: {
+    paddingVertical: 17,
+    borderRadius: 16,
+    alignItems: "center",
+    borderWidth: 2,
+  },
+  bigBtnOutlineText: { fontWeight: "800", fontSize: 17 },
+
+  // ── Auth ──
+  authContent: {
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 40,
+  },
+  authTitle: { fontSize: 30, fontWeight: "900", marginBottom: 8 },
+  authSwitchRow: { marginBottom: 28 },
+  authSwitchText: { fontSize: 14, lineHeight: 20 },
+  authSwitchLink: { fontWeight: "700" },
+  authFields: { gap: 12, marginBottom: 16 },
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 8,
-    marginHorizontal: 16,
+    marginBottom: 12,
   },
   errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
-
-  // ── Welcome screen ──
-  welcomeContainer: { flex: 1, paddingHorizontal: 32, justifyContent: "space-between", paddingVertical: 48 },
-  welcomeTop: { alignItems: "center", flex: 1, justifyContent: "center", gap: 16 },
-  welcomeLogo: { width: 120, height: 120, resizeMode: "contain" },
-  welcomeTitle: { fontSize: 28, fontWeight: "700", textAlign: "center", lineHeight: 38 },
-  welcomeTitleBold: { fontSize: 36, fontWeight: "900" },
-  welcomeTagline: { fontSize: 18, textAlign: "center", lineHeight: 28, fontStyle: "italic" },
-  welcomeButtons: { gap: 0 },
-  welcomeBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
+  forgotText: { fontSize: 13, marginBottom: 20 },
+  submitBtn: {
+    marginTop: 20,
+    paddingVertical: 17,
+    borderRadius: 14,
     alignItems: "center",
   },
-  welcomeBtnText: { color: "#fff", fontWeight: "800", fontSize: 18 },
+  submitBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
 
-  // ── Auth screen (sheet) ──
-  authSheet: { flex: 1, backgroundColor: "#F0F0F6", borderRadius: 0, position: "relative" },
-  authCloseBtn: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  // ── Profile setup ──
+  profileContent: {
     alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
+    paddingHorizontal: 28,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  authContent: { paddingHorizontal: 28, paddingTop: 60, paddingBottom: 24 },
-  authTitle: { fontSize: 36, fontWeight: "800", marginBottom: 6 },
-  authSwitch: { fontSize: 14, marginBottom: 32 },
-  authFields: { gap: 12, marginBottom: 16 },
-  authArrowBtn: {
-    margin: 24,
-    marginTop: 0,
-    height: 58,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // ── Icon-prefixed input ──
-  iconInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-  },
-  iconInputText: { flex: 1, fontSize: 16 },
-
-  // ── BasicInfo screen ──
-  infoContent: { alignItems: "center", paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 },
   avatarCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 32,
+    marginBottom: 20,
   },
-  infoFields: { width: "100%", gap: 12, marginBottom: 32 },
-  nextBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
+  profileFields: { width: "100%", gap: 12, marginBottom: 20 },
+  appearanceRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     width: "100%",
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 28,
   },
-  nextBtnText: { color: "#fff", fontWeight: "700", fontSize: 17 },
+  appearanceLabel: { flex: 1, fontSize: 15, fontWeight: "600" },
 
-  // ── Interests screen ──
-  interestTitle: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 24 },
-  interestGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  // ── Interests ──
+  stepHeaderPad: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 4 },
+  interestScrollContent: { paddingHorizontal: 24, paddingBottom: 20 },
+  interestGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   interestChip: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 12,
-    minWidth: (SCREEN_W - 56) / 2,
+    borderWidth: 1,
+    minWidth: (SW - 72) / 2,
+    alignItems: "center",
+  },
+  interestChipText: { fontWeight: "700", fontSize: 15 },
+  customRow: { flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 12 },
+  customAddBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  interestChipText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  customChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  customChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
   customChipText: { fontSize: 13, fontWeight: "600" },
+  stepFooter: { paddingHorizontal: 24, paddingBottom: 28 },
 
-  // ── Free time screen ──
-  freeTimeQuestion: { fontSize: 26, fontWeight: "700", textAlign: "center", marginBottom: 32, lineHeight: 36 },
-  freeTimeOptions: { gap: 12, marginBottom: 32 },
+  // ── Free time ──
+  stepContentPad: {
+    flex: 1,
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 28,
+  },
+  freeTimeQ: { fontSize: 26, fontWeight: "800", lineHeight: 34, marginBottom: 28 },
+  freeTimeList: { gap: 12, marginBottom: 32 },
   freeTimeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 18,
     borderRadius: 14,
     borderWidth: 1,
-    alignItems: "center",
   },
   freeTimeLabel: { fontSize: 16, fontWeight: "600" },
 
-  // ── Features screen ──
-  featuresTitleLg: { fontSize: 28, fontWeight: "800", textAlign: "center", marginBottom: 32 },
-  featureRows: { gap: 14, marginBottom: 32 },
-  featureRow: {
+  // ── Features ──
+  featureList: { gap: 14, marginBottom: 28 },
+  featureCard: {
     flexDirection: "row",
     alignItems: "center",
     padding: 18,
     borderRadius: 14,
     borderWidth: 1,
+    gap: 14,
   },
-  featureRowLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
-  featureRowChevron: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Legacy (kept for compatibility)
-  hobbyGrid: { flexDirection: "row", flexWrap: "wrap", padding: 16, gap: 12 },
-  customHobbySection: { paddingHorizontal: 16, paddingBottom: 16 },
-  customHobbyRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
-  customHobbyInput: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14 },
-  customAddBtn: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  hobbyTile: {
-    width: (SCREEN_W - 56) / 3,
-    aspectRatio: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  hobbyTileText: { fontSize: 13, fontWeight: "600", textAlign: "center", lineHeight: 17 },
-  noticeBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 14,
+  featureIconWrap: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  noticeText: { flex: 1, fontSize: 13 },
+  featureLabel: { fontSize: 16, fontWeight: "700", flex: 1 },
 });
