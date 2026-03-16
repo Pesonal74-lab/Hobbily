@@ -22,6 +22,7 @@ type TimeContextType = {
   toggleComplete: (id: string) => Promise<void>;
   setDailyReminderEnabled: (enabled: boolean) => Promise<void>;
   dismissDailyBanner: () => void;
+  resetDailyBanner: () => void;
 };
 
 const TimeContext = createContext<TimeContextType | undefined>(undefined);
@@ -95,6 +96,10 @@ export function TimeProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(REMINDER_SHOWN_KEY, today);
   }
 
+  function resetDailyBanner() {
+    if (dailyReminderEnabled) setShowDailyBanner(true);
+  }
+
   return (
     <TimeContext.Provider
       value={{
@@ -108,6 +113,7 @@ export function TimeProvider({ children }: { children: React.ReactNode }) {
         toggleComplete,
         setDailyReminderEnabled,
         dismissDailyBanner,
+        resetDailyBanner,
       }}
     >
       {children}

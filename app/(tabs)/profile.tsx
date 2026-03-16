@@ -26,7 +26,7 @@ import TagChip from "../../components/TagChip";
 import ConfirmModal from "../../components/ConfirmModal";
 import PostCard from "../../components/PostCard";
 import SwipeableTab from "../../components/SwipeableTab";
-import { TIP_KEYS } from "../../components/TipBanner";
+import { TIP_KEYS, useTipsReset } from "../../components/TipBanner";
 import { Achievement } from "../../types/Progress";
 
 // ── Achievement definitions (mirrors ProgressContext) ─────────────────────────
@@ -258,9 +258,10 @@ export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const { profile, saveProfile } = useProfile();
   const { currentStreak, longestStreak, totalSessions, totalMinutes, achievements } = useProgress();
-  const { dailyReminderEnabled, setDailyReminderEnabled } = useTime();
+  const { dailyReminderEnabled, setDailyReminderEnabled, resetDailyBanner } = useTime();
   const { signOut, deleteAccount } = useAuth();
   const { posts, deletePost } = usePosts();
+  const { bump: bumpTips } = useTipsReset();
 
   const [activeTab, setActiveTab] = useState<TabId>("edit");
   const [draft, setDraft] = useState({ ...profile });
@@ -323,6 +324,8 @@ export default function ProfileScreen() {
       ...Object.values(TIP_KEYS),
       "@hobbily_reminder_shown_date",
     ]);
+    bumpTips();        // signal all mounted TipBanners to re-read AsyncStorage
+    resetDailyBanner(); // restore the planner daily reminder banner
     setTipsResetDone(true);
     setTimeout(() => setTipsResetDone(false), 2000);
   }

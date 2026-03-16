@@ -929,7 +929,8 @@ const styles = StyleSheet.create({
   reminderBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    margin: 16,
+    marginTop: 16,
+    marginHorizontal: 16,
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
@@ -941,6 +942,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 16,
+    marginTop: 16,
     marginBottom: 4,
     padding: 14,
     borderRadius: 14,

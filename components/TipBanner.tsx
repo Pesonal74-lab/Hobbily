@@ -1,12 +1,33 @@
 /**
  * TipBanner
  * A dismissible tip card. Once dismissed it never shows again (AsyncStorage).
- * Reset via Settings → "Reset dismissed tips".
+ * Reset via Settings → "Reset dismissed tips" (bumps TipsResetContext version,
+ * causing all mounted banners to re-read AsyncStorage and reappear).
  */
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { useState, useEffect } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+
+// ── Reset context ─────────────────────────────────────────────────────────────
+
+type TipsResetCtx = { version: number; bump: () => void };
+const TipsResetContext = createContext<TipsResetCtx>({ version: 0, bump: () => {} });
+
+export function TipsResetProvider({ children }: { children: React.ReactNode }) {
+  const [version, setVersion] = useState(0);
+  return (
+    <TipsResetContext.Provider value={{ version, bump: () => setVersion((v) => v + 1) }}>
+      {children}
+    </TipsResetContext.Provider>
+  );
+}
+
+export function useTipsReset() {
+  return useContext(TipsResetContext);
+}
+
+// ── TipBanner component ───────────────────────────────────────────────────────
 
 type Props = {
   storageKey: string;
@@ -17,12 +38,14 @@ type Props = {
 
 export default function TipBanner({ storageKey, text, icon = "bulb-outline", colors }: Props) {
   const [visible, setVisible] = useState(false);
+  const { version } = useTipsReset();
 
+  // Re-runs whenever `version` is bumped (i.e. after a tips reset)
   useEffect(() => {
     AsyncStorage.getItem(storageKey).then((val) => {
-      if (val !== "dismissed") setVisible(true);
+      setVisible(val !== "dismissed");
     });
-  }, [storageKey]);
+  }, [storageKey, version]);
 
   async function dismiss() {
     setVisible(false);

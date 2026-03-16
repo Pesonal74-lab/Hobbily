@@ -8,6 +8,7 @@ import { CommunityProvider } from "../context/CommunityContext";
 import { ProgressProvider } from "../context/ProgressContext";
 import { Image, Animated, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { TipsResetProvider } from "../components/TipBanner";
 import { useEffect, useRef, useState } from "react";
 
 function AppShell() {
@@ -70,6 +71,7 @@ function AppShell() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <TipsResetProvider>
       <AuthProvider>
         <ThemeProvider>
           <ProfileProvider>
@@ -85,6 +87,7 @@ export default function RootLayout() {
           </ProfileProvider>
         </ThemeProvider>
       </AuthProvider>
+      </TipsResetProvider>
     </GestureHandlerRootView>
   );
 }
