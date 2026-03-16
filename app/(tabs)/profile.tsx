@@ -14,14 +14,17 @@ import { useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
 import { useProgress } from "../../context/ProgressContext";
 import { useTime } from "../../context/TimeContext";
 import { useAuth } from "../../context/AuthContext";
+import { usePosts } from "../../context/PostsContext";
 import InputField from "../../components/InputField";
 import TagChip from "../../components/TagChip";
 import ConfirmModal from "../../components/ConfirmModal";
+import PostCard from "../../components/PostCard";
 import SwipeableTab from "../../components/SwipeableTab";
 import { TIP_KEYS } from "../../components/TipBanner";
 import { Achievement } from "../../types/Progress";
@@ -249,7 +252,7 @@ function DeleteAccountModal({
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-type TabId = "edit" | "badges" | "settings";
+type TabId = "edit" | "posts" | "badges" | "settings";
 
 export default function ProfileScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -257,6 +260,7 @@ export default function ProfileScreen() {
   const { currentStreak, longestStreak, totalSessions, totalMinutes, achievements } = useProgress();
   const { dailyReminderEnabled, setDailyReminderEnabled } = useTime();
   const { signOut, deleteAccount } = useAuth();
+  const { posts, deletePost } = usePosts();
 
   const [activeTab, setActiveTab] = useState<TabId>("edit");
   const [draft, setDraft] = useState({ ...profile });
@@ -332,8 +336,11 @@ export default function ProfileScreen() {
       ? `${practiceHours}h ${practiceMin}m`
       : `${practiceMin}m`;
 
+  const myPosts = posts.filter((p) => p.username === profile.username);
+
   const TABS: { id: TabId; label: string }[] = [
     { id: "edit", label: "Edit" },
+    { id: "posts", label: "Posts" },
     { id: "badges", label: "Badges" },
     { id: "settings", label: "Settings" },
   ];
@@ -497,6 +504,42 @@ export default function ProfileScreen() {
                 <Text style={styles.saveBtnText}>Save Changes</Text>
               </TouchableOpacity>
             </Pressable>
+          )}
+
+          {/* ── Posts tab ────────────────────────────────────────────────── */}
+          {activeTab === "posts" && (
+            <View style={{ padding: 16, paddingTop: 8 }}>
+              <View style={styles.postsSectionRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>My Posts</Text>
+                <TouchableOpacity onPress={() => router.push("/create-post" as any)}>
+                  <Ionicons name="create-outline" size={22} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              {myPosts.length === 0 ? (
+                <View style={[styles.postsEmpty, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Ionicons name="newspaper-outline" size={36} color={colors.secondaryText} />
+                  <Text style={[styles.postsEmptyText, { color: colors.secondaryText }]}>
+                    You haven't posted anything yet.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => router.push("/create-post" as any)}
+                    style={[styles.postsCreateBtn, { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={styles.postsCreateBtnText}>Create your first post</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                myPosts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    colors={colors}
+                    onEdit={() => router.push(`/edit-post/${post.id}` as any)}
+                    onDelete={() => deletePost(post.id)}
+                  />
+                ))
+              )}
+            </View>
           )}
 
           {/* ── Badges tab ───────────────────────────────────────────────── */}
@@ -762,6 +805,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
+  // Posts tab
+  postsSectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  postsEmpty: { padding: 28, borderRadius: 16, borderWidth: 1, alignItems: "center", gap: 10 },
+  postsEmptyText: { fontSize: 14, textAlign: "center" },
+  postsCreateBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 4 },
+  postsCreateBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
   // Badges tab
   sectionTitle: { fontSize: 17, fontWeight: "800", marginBottom: 4 },

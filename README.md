@@ -25,7 +25,8 @@ An app that helps teens manage their time, communicate with others about shared 
 
 ### Feed
 - Scrollable community post feed, newest first (real-time via Firestore)
-- Create posts with a title, body, and optional tags
+- Accessible via the **Feed** quick action on Home, or the **Posts** tab on Profile
+- Create posts with a title, body, and optional tags (pencil button in feed header)
 - Edit your own posts — shows a `✎ edited` badge
 - Delete posts with a custom confirmation modal
 - Tap any post to open the full detail view with comments
@@ -67,6 +68,7 @@ An app that helps teens manage their time, communicate with others about shared 
 - Hero card with initials avatar, name, city, and bio
 - Stats row: current streak 🔥, best streak, total sessions, total practice time
 - **Edit tab** — username, age (validated 13–150), city, bio, hobby tags (blue, two-press delete)
+- **Posts tab** — view and manage all posts you've written; create new ones from the pencil icon
 - **Badges tab** — 7 achievements, earned ones shown in solid blue; locked ones faded
 - **Settings tab** — dark mode toggle, daily reminder toggle, account info card
 - **Log Out** button with confirmation modal
@@ -119,6 +121,7 @@ An app that helps teens manage their time, communicate with others about shared 
 app/
 ├── _layout.tsx              # Root layout — AuthProvider, all providers, splash screen, auth gate
 ├── onboarding.tsx           # Full OOBE flow (sign up/in, hobbies, free time, profile setup)
+├── feed.tsx                 # Community feed — all posts, create button in header
 ├── create-post.tsx          # Create post screen
 ├── edit-post/[id].tsx       # Edit post screen
 ├── post/[id].tsx            # Post detail + comments screen
@@ -128,7 +131,7 @@ app/
     ├── time-manager.tsx     # Schedule / time management (tab 1)
     ├── community.tsx        # Hobby channels + real-time chat (tab 2)
     ├── opportunities.tsx    # Programs & clubs explorer (tab 3)
-    └── profile.tsx          # Profile editor, badges, settings, logout, delete account (tab 4)
+    └── profile.tsx          # Profile — edit, posts, badges, settings, logout, delete (tab 4)
 
 components/
 ├── SwipeableTab.tsx         # Reusable swipe-to-navigate wrapper for all tab screens
@@ -240,6 +243,8 @@ Scan the QR code with Expo Go, or press `a` for Android emulator.
 - [x] Hobbily brand colour palette
 - [x] Android navigation bar safe-area fix for tab bar
 - [x] Animated splash screen
+- [x] Community Feed screen — accessible from Home quick action; full post list with create button
+- [x] Profile "Posts" tab — view and manage your own posts in-profile
 
 ---
 

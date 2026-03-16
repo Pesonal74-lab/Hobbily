@@ -360,7 +360,7 @@ export default function HomeScreen() {
                 { icon: "add-circle-outline" as const, label: "Add Task", action: () => router.push("/(tabs)/time-manager"), color: colors.primary },
                 { icon: "compass-outline" as const, label: "Explore", action: () => router.push("/(tabs)/opportunities"), color: "#8B5CF6" },
                 { icon: "chatbubbles-outline" as const, label: "Community", action: () => router.push("/(tabs)/community"), color: "#10B981" },
-                { icon: "create-outline" as const, label: "New Post", action: () => router.push("/create-post"), color: "#F59E0B" },
+                { icon: "newspaper-outline" as const, label: "Feed", action: () => router.push("/feed" as any), color: "#F59E0B" },
               ].map((a) => (
                 <TouchableOpacity key={a.label} onPress={a.action} style={[styles.quickAction, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={[styles.quickActionIcon, { backgroundColor: a.color + "18" }]}>
