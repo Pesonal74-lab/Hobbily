@@ -1,643 +1,174 @@
+/**
+ * Profile screen — overview hub.
+ * Shows avatar, stats, compact interest chips, and navigation rows.
+ * All editing / detailed views are pushed as separate screens.
+ */
 import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  Pressable,
-  TouchableOpacity,
-  Image,
-  Modal,
-  ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
 } from "react-native";
-import { useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
 import { useProgress } from "../../context/ProgressContext";
-import { useTime } from "../../context/TimeContext";
-import { useAuth } from "../../context/AuthContext";
-import { usePosts } from "../../context/PostsContext";
-import InputField from "../../components/InputField";
-import TagChip from "../../components/TagChip";
-import ConfirmModal from "../../components/ConfirmModal";
-import PostCard from "../../components/PostCard";
 import SwipeableTab from "../../components/SwipeableTab";
-import { TIP_KEYS, useTipsReset } from "../../components/TipBanner";
-import { Achievement } from "../../types/Progress";
 
-// ── Achievement definitions (mirrors ProgressContext) ─────────────────────────
-const ALL_ACHIEVEMENT_DEFS = [
-  { id: "first_session",  title: "First Step",     description: "Complete your first session",    icon: "footsteps-outline" },
-  { id: "streak_3",       title: "3-Day Streak",   description: "Practice 3 days in a row",       icon: "flame-outline" },
-  { id: "streak_7",       title: "Week Warrior",   description: "7-day streak!",                  icon: "trophy-outline" },
-  { id: "sessions_10",    title: "Dedicated",      description: "Complete 10 sessions",           icon: "star-outline" },
-  { id: "minutes_300",    title: "Five Hours",     description: "5+ hours of practice total",     icon: "time-outline" },
-  { id: "streak_30",      title: "Month Master",   description: "30-day streak!",                 icon: "medal-outline" },
-  { id: "sessions_50",    title: "Committed",      description: "Complete 50 sessions",           icon: "ribbon-outline" },
-];
-
-// ── AchievementTile ───────────────────────────────────────────────────────────
-function AchievementTile({
-  def,
-  earned,
-  colors,
+// ── Nav Row ───────────────────────────────────────────────────────────────────
+function NavRow({
+  icon, label, sublabel, onPress, colors,
 }: {
-  def: typeof ALL_ACHIEVEMENT_DEFS[0];
-  earned: Achievement | undefined;
-  colors: any;
-}) {
-  return (
-    <View
-      style={[
-        styles.achieveTile,
-        {
-          backgroundColor: earned ? colors.primary : colors.card,
-          borderColor: earned ? colors.primary : colors.border,
-          opacity: earned ? 1 : 0.5,
-        },
-      ]}
-    >
-      <Ionicons
-        name={def.icon as any}
-        size={28}
-        color={earned ? "#fff" : colors.secondaryText}
-      />
-      <Text
-        style={[styles.achieveTitle, { color: earned ? "#fff" : colors.text }]}
-        numberOfLines={1}
-      >
-        {def.title}
-      </Text>
-      <Text
-        style={[styles.achieveDesc, { color: earned ? "rgba(255,255,255,0.8)" : colors.secondaryText }]}
-        numberOfLines={2}
-      >
-        {def.description}
-      </Text>
-      {earned && (
-        <Text style={styles.achieveDate}>{earned.earnedAt}</Text>
-      )}
-    </View>
-  );
-}
-
-// ── ToggleRow ─────────────────────────────────────────────────────────────────
-function ToggleRow({
-  label,
-  sublabel,
-  value,
-  onToggle,
-  colors,
-}: {
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   sublabel?: string;
-  value: boolean;
-  onToggle: () => void;
+  onPress: () => void;
   colors: any;
 }) {
   return (
     <TouchableOpacity
-      style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={onToggle}
-      activeOpacity={0.7}
+      style={[styles.navRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.75}
     >
+      <Ionicons name={icon} size={22} color={colors.primary} style={styles.navRowIcon} />
       <View style={{ flex: 1 }}>
-        <Text style={[styles.toggleLabel, { color: colors.text }]}>{label}</Text>
+        <Text style={[styles.navRowLabel, { color: colors.primary }]}>{label}</Text>
         {sublabel ? (
-          <Text style={[styles.toggleSub, { color: colors.secondaryText }]}>{sublabel}</Text>
+          <Text style={[styles.navRowSub, { color: colors.secondaryText }]}>{sublabel}</Text>
         ) : null}
       </View>
-      <View
-        style={[
-          styles.toggleTrack,
-          { backgroundColor: value ? colors.primary : colors.border },
-        ]}
-      >
-        <View
-          style={[
-            styles.toggleThumb,
-            { transform: [{ translateX: value ? 20 : 2 }] },
-          ]}
-        />
-      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.secondaryText} />
     </TouchableOpacity>
   );
 }
 
-// ── DeleteAccountModal ────────────────────────────────────────────────────────
-function DeleteAccountModal({
-  visible,
-  onCancel,
-  onConfirm,
-  colors,
-}: {
-  visible: boolean;
-  onCancel: () => void;
-  onConfirm: (password: string) => Promise<void>;
-  colors: any;
-}) {
-  const [checked, setChecked] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const canDelete = checked && confirmText.trim() === "DELETE" && password.length > 0;
-
-  async function handleDelete() {
-    setLoading(true);
-    setError("");
-    try {
-      await onConfirm(password);
-      // On success the user is redirected away — no need to close manually
-    } catch (e: any) {
-      setLoading(false);
-      if (e.code === "auth/wrong-password" || e.code === "auth/invalid-credential") {
-        setError("Incorrect password. Please try again.");
-      } else if (e.code === "auth/too-many-requests") {
-        setError("Too many attempts. Please wait a moment and try again.");
-      } else {
-        setError("Failed to delete account. Please try again.");
-      }
-    }
-  }
-
-  function handleCancel() {
-    setChecked(false);
-    setConfirmText("");
-    setPassword("");
-    setError("");
-    onCancel();
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.deleteModal, { backgroundColor: colors.card, borderColor: "#ef4444" }]}>
-          <Ionicons name="warning-outline" size={36} color="#ef4444" style={{ alignSelf: "center" }} />
-          <Text style={[styles.deleteTitle, { color: colors.text }]}>Delete Account</Text>
-          <Text style={[styles.deleteBody, { color: colors.secondaryText }]}>
-            This will permanently delete your profile, progress, and all your data. This cannot be undone.
-          </Text>
-
-          {/* Step 1: checkbox */}
-          <TouchableOpacity style={styles.checkRow} onPress={() => setChecked(!checked)} activeOpacity={0.7}>
-            <View style={[styles.checkbox, { borderColor: "#ef4444", backgroundColor: checked ? "#ef4444" : "transparent" }]}>
-              {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
-            </View>
-            <Text style={[styles.checkLabel, { color: colors.text }]}>
-              I understand this is permanent and cannot be undone.
-            </Text>
-          </TouchableOpacity>
-
-          {/* Step 2: type DELETE */}
-          <Text style={[styles.deleteHint, { color: colors.secondaryText }]}>
-            Type <Text style={{ color: "#ef4444", fontWeight: "700" }}>DELETE</Text> to confirm:
-          </Text>
-          <TextInput
-            style={[styles.deleteInput, { color: colors.text, borderColor: confirmText === "DELETE" ? "#ef4444" : colors.border, backgroundColor: colors.inputBackground }]}
-            value={confirmText}
-            onChangeText={setConfirmText}
-            autoCapitalize="characters"
-            placeholder="DELETE"
-            placeholderTextColor={colors.secondaryText}
-          />
-
-          {/* Step 3: password */}
-          <Text style={[styles.deleteHint, { color: colors.secondaryText }]}>
-            Enter your password:
-          </Text>
-          <TextInput
-            style={[styles.deleteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground, letterSpacing: 0 }]}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholder="Your password"
-            placeholderTextColor={colors.secondaryText}
-          />
-
-          {error ? (
-            <Text style={{ color: "#ef4444", fontSize: 13, textAlign: "center" }}>{error}</Text>
-          ) : null}
-
-          <View style={styles.deleteActions}>
-            <TouchableOpacity
-              style={[styles.deleteCancelBtn, { borderColor: colors.border }]}
-              onPress={handleCancel}
-              disabled={loading}
-            >
-              <Text style={[styles.deleteCancelText, { color: colors.text }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.deleteConfirmBtn, { backgroundColor: canDelete ? "#ef4444" : colors.border }]}
-              onPress={handleDelete}
-              disabled={!canDelete || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.deleteConfirmText}>Delete</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ── Main screen ───────────────────────────────────────────────────────────────
-type TabId = "edit" | "posts" | "badges" | "settings";
-
+// ── Main Screen ───────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
-  const { colors, isDark, toggleTheme } = useTheme();
-  const { profile, saveProfile } = useProfile();
-  const { currentStreak, longestStreak, totalSessions, totalMinutes, achievements } = useProgress();
-  const { dailyReminderEnabled, setDailyReminderEnabled, resetDailyBanner } = useTime();
-  const { signOut, deleteAccount } = useAuth();
-  const { posts, deletePost } = usePosts();
-  const { bump: bumpTips } = useTipsReset();
-
-  const [activeTab, setActiveTab] = useState<TabId>("edit");
-  const [draft, setDraft] = useState({ ...profile });
-  const [newTag, setNewTag] = useState("");
-  const [pendingTag, setPendingTag] = useState<string | null>(null);
-  const [saveModalVisible, setSaveModalVisible] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
-  const [tipsResetDone, setTipsResetDone] = useState(false);
-
-  const initials = (draft.username || "?")
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  function addHobby() {
-    const tag = newTag.trim();
-    if (!tag) return;
-    if (draft.hobbies.includes(tag)) {
-      setSaveError(`"${tag}" is already in your hobbies.`);
-      setSaveModalVisible(true);
-      return;
-    }
-    setDraft({ ...draft, hobbies: [...draft.hobbies, tag] });
-    setNewTag("");
-    setPendingTag(null);
-  }
-
-  function handleTagPress(tag: string) {
-    if (pendingTag === tag) {
-      setDraft({ ...draft, hobbies: draft.hobbies.filter((t) => t !== tag) });
-      setPendingTag(null);
-    } else {
-      setPendingTag(tag);
-    }
-  }
-
-  function requestSave() {
-    const ageNum = parseInt(draft.age, 10);
-    if (draft.age && (isNaN(ageNum) || ageNum < 13 || ageNum > 150)) {
-      setSaveError("Age must be between 13 and 150.");
-      setSaveModalVisible(true);
-      return;
-    }
-    setSaveError("");
-    setSaveModalVisible(true);
-  }
-
-  async function handleConfirmSave() {
-    setSaveModalVisible(false);
-    if (saveError) return;
-    await saveProfile(draft);
-  }
-
-  async function handleResetTips() {
-    await AsyncStorage.multiRemove([
-      ...Object.values(TIP_KEYS),
-      "@hobbily_reminder_shown_date",
-    ]);
-    bumpTips();        // signal all mounted TipBanners to re-read AsyncStorage
-    resetDailyBanner(); // restore the planner daily reminder banner
-    setTipsResetDone(true);
-    setTimeout(() => setTipsResetDone(false), 2000);
-  }
+  const { colors } = useTheme();
+  const { profile } = useProfile();
+  const { currentStreak, totalSessions, totalMinutes, achievements } = useProgress();
 
   const practiceHours = Math.floor(totalMinutes / 60);
   const practiceMin = totalMinutes % 60;
-  const practiceLabel =
-    totalMinutes === 0
-      ? "0 min"
-      : practiceHours > 0
-      ? `${practiceHours}h ${practiceMin}m`
-      : `${practiceMin}m`;
-
-  const myPosts = posts.filter((p) => p.username === profile.username);
-
-  const TABS: { id: TabId; label: string }[] = [
-    { id: "edit", label: "Edit" },
-    { id: "posts", label: "Posts" },
-    { id: "badges", label: "Badges" },
-    { id: "settings", label: "Settings" },
-  ];
+  const practiceLabel = practiceHours > 0
+    ? `${practiceHours}h ${practiceMin}m`
+    : totalMinutes > 0 ? `${totalMinutes}m` : "0m";
 
   return (
     <SwipeableTab tabIndex={2} backgroundColor={colors.background}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-        <ScrollView
-          contentContainerStyle={{ paddingBottom: 80 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Avatar */}
+          {/* Avatar + name */}
           <View style={styles.avatarSection}>
             <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
-              <Ionicons name="person-outline" size={56} color={colors.primary} />
+              <Ionicons name="person-outline" size={52} color={colors.primary} />
             </View>
             <Text style={[styles.heroName, { color: colors.primary }]}>
-              {draft.username || "User name"}
+              {profile.username || "Your Name"}
             </Text>
+            {profile.city ? (
+              <View style={styles.cityRow}>
+                <Ionicons name="location-outline" size={13} color={colors.secondaryText} />
+                <Text style={[styles.cityText, { color: colors.secondaryText }]}>{profile.city}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Stats row */}
+          <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {[
+              { label: "Streak", value: `${currentStreak}d`, icon: "flame-outline" as const },
+              { label: "Sessions", value: `${totalSessions}`, icon: "checkmark-circle-outline" as const },
+              { label: "Practice", value: practiceLabel, icon: "time-outline" as const },
+              { label: "Badges", value: `${achievements.length}/7`, icon: "trophy-outline" as const },
+            ].map((s, i, arr) => (
+              <View key={s.label} style={[styles.statItem, i < arr.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <Ionicons name={s.icon} size={16} color={colors.accent} />
+                <Text style={[styles.statValue, { color: colors.primary }]}>{s.value}</Text>
+                <Text style={[styles.statLabel, { color: colors.secondaryText }]}>{s.label}</Text>
+              </View>
+            ))}
           </View>
 
           {/* My Interests card */}
           <View style={[styles.interestsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.interestsTitle, { color: colors.primary }]}>My intrests</Text>
-            {draft.hobbies.length === 0 ? (
-              <Text style={[styles.interestsEmpty, { color: colors.secondaryText }]}>No hobbies yet</Text>
+            <View style={styles.interestsHeader}>
+              <Text style={[styles.interestsTitle, { color: colors.primary }]}>My Interests</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/edit-hobbies")}
+                style={[styles.editChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              >
+                <Ionicons name="pencil-outline" size={13} color={colors.primary} />
+                <Text style={[styles.editChipText, { color: colors.primary }]}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+
+            {profile.hobbies.length === 0 ? (
+              <TouchableOpacity
+                onPress={() => router.push("/edit-hobbies")}
+                style={[styles.noHobbiesBtn, { backgroundColor: colors.secondary }]}
+              >
+                <Text style={[styles.noHobbiesText, { color: colors.primary }]}>
+                  + Add your first hobby
+                </Text>
+              </TouchableOpacity>
             ) : (
-              draft.hobbies.slice(0, 5).map((hobby) => (
-                <View key={hobby} style={[styles.interestRow, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.interestRowText}>{hobby}</Text>
-                </View>
-              ))
-            )}
-            <TouchableOpacity
-              onPress={() => setActiveTab("edit")}
-              style={[styles.editInterestsBtn, { borderColor: colors.border }]}
-            >
-              <Text style={[styles.editInterestsBtnText, { color: colors.primary }]}>Edit</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Streak badge */}
-          {currentStreak > 0 && (
-            <View style={[styles.streakBadge, { backgroundColor: colors.accent }]}>
-              <Text style={styles.streakBadgeText}>Streak:  {currentStreak} days</Text>
-            </View>
-          )}
-
-          {/* Menu rows */}
-          <View style={styles.menuSection}>
-            {[
-              { icon: "settings-outline" as const, label: "Settings", onPress: () => setActiveTab("settings") },
-              { icon: "notifications-outline" as const, label: "Notifications", onPress: () => setActiveTab("settings") },
-              { icon: "search-outline" as const, label: "My Posts", onPress: () => setActiveTab("posts") },
-            ].map((item) => (
-              <TouchableOpacity
-                key={item.label}
-                style={[styles.menuRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-                onPress={item.onPress}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsScroll}
               >
-                <Ionicons name={item.icon} size={24} color={colors.primary} />
-                <Text style={[styles.menuRowLabel, { color: colors.primary }]}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Badges row */}
-          <TouchableOpacity
-            style={[styles.achieveMenuRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-            onPress={() => setActiveTab("badges")}
-          >
-            <Ionicons name="trophy-outline" size={24} color={colors.primary} />
-            <Text style={[styles.menuRowLabel, { color: colors.primary }]}>Achievements ({achievements.length}/{ALL_ACHIEVEMENT_DEFS.length})</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.secondaryText} />
-          </TouchableOpacity>
-
-          {/* ── Edit modal-style section ──────────────────────────────── */}
-          {activeTab === "edit" && (
-            <Pressable onPress={() => setPendingTag(null)}
-              style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Edit Profile</Text>
-              <InputField
-                label="Username"
-                value={draft.username}
-                onChangeText={(username) => setDraft({ ...draft, username })}
-                containerStyle={{ backgroundColor: "transparent" }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-              />
-              <InputField
-                label="Age"
-                value={draft.age}
-                onChangeText={(age) => setDraft({ ...draft, age })}
-                containerStyle={{ backgroundColor: "transparent" }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-                keyboardType="number-pad"
-              />
-              <InputField
-                label="City"
-                value={draft.city}
-                onChangeText={(city) => setDraft({ ...draft, city })}
-                containerStyle={{ backgroundColor: "transparent" }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-              />
-              <InputField
-                label="About Me"
-                value={draft.bio}
-                onChangeText={(bio) => setDraft({ ...draft, bio })}
-                containerStyle={{ backgroundColor: "transparent" }}
-                labelStyle={{ color: colors.text }}
-                inputStyle={{ color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }}
-                multiline
-              />
-
-              <Text style={[styles.label, { color: colors.text, marginTop: 4 }]}>My Hobbies</Text>
-              <View style={[styles.hobbyInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
-                <TextInput
-                  style={[styles.hobbyInput, { color: colors.text }]}
-                  placeholder="Add a hobby..."
-                  placeholderTextColor={colors.secondaryText}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  onSubmitEditing={addHobby}
-                />
-                <TouchableOpacity onPress={addHobby} style={[styles.addHobbyBtn, { backgroundColor: colors.primary }]}>
-                  <Ionicons name="add" size={20} color="#fff" />
-                </TouchableOpacity>
-              </View>
-
-              {draft.hobbies.length > 0 && (
-                <>
-                  <Text style={[styles.hint, { color: colors.secondaryText }]}>Tap once to select, tap again to delete.</Text>
-                  <View style={styles.tagWrap}>
-                    {draft.hobbies.map((tag) => (
-                      <TagChip
-                        key={tag}
-                        label={tag}
-                        textColor="#fff"
-                        backgroundColor={colors.primary}
-                        isPendingDelete={pendingTag === tag}
-                        onPress={() => handleTagPress(tag)}
-                      />
-                    ))}
+                {profile.hobbies.map((h) => (
+                  <View key={h} style={[styles.hobbyChip, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.hobbyChipText}>{h}</Text>
                   </View>
-                </>
-              )}
+                ))}
+              </ScrollView>
+            )}
+          </View>
 
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity onPress={() => setActiveTab("edit")} style={[styles.cancelSubBtn, { borderColor: colors.border }]}>
-                  <Text style={[{ color: colors.primary, fontWeight: "600" }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={requestSave} style={[styles.saveBtn, { backgroundColor: colors.primary, flex: 1 }]}>
-                  <Text style={styles.saveBtnText}>Save Changes</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          )}
-
-          {/* ── Posts sub-section ── */}
-          {activeTab === "posts" && (
-            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.postsSectionRow}>
-                <Text style={[styles.subSectionTitle, { color: colors.primary }]}>My Posts</Text>
-                <TouchableOpacity onPress={() => router.push("/create-post" as any)}>
-                  <Ionicons name="create-outline" size={22} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              {myPosts.length === 0 ? (
-                <View style={[styles.postsEmpty, { borderColor: colors.border }]}>
-                  <Ionicons name="newspaper-outline" size={36} color={colors.secondaryText} />
-                  <Text style={[styles.postsEmptyText, { color: colors.secondaryText }]}>No posts yet.</Text>
-                  <TouchableOpacity
-                    onPress={() => router.push("/create-post" as any)}
-                    style={[styles.postsCreateBtn, { backgroundColor: colors.primary }]}
-                  >
-                    <Text style={styles.postsCreateBtnText}>Create your first post</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                myPosts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    colors={colors}
-                    onEdit={() => router.push(`/edit-post/${post.id}` as any)}
-                    onDelete={() => deletePost(post.id)}
-                  />
-                ))
-              )}
+          {/* Streak banner (only when active) */}
+          {currentStreak > 0 && (
+            <View style={[styles.streakBanner, { backgroundColor: colors.accent }]}>
+              <Ionicons name="flame" size={18} color="#fff" />
+              <Text style={styles.streakBannerText}>{currentStreak}-day streak — keep it going!</Text>
             </View>
           )}
 
-          {/* ── Badges sub-section ── */}
-          {activeTab === "badges" && (
-            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Achievements</Text>
-              <Text style={[styles.sectionSub, { color: colors.secondaryText }]}>{achievements.length} / {ALL_ACHIEVEMENT_DEFS.length} earned</Text>
-              <View style={styles.achieveGrid}>
-                {ALL_ACHIEVEMENT_DEFS.map((def) => {
-                  const earned = achievements.find((a) => a.id === def.id);
-                  return <AchievementTile key={def.id} def={def} earned={earned} colors={colors} />;
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* ── Settings sub-section ── */}
-          {activeTab === "settings" && (
-            <View style={[styles.subSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.subSectionTitle, { color: colors.primary }]}>Settings</Text>
-
-              <ToggleRow label="Dark Mode" sublabel={isDark ? "Currently dark" : "Currently light"} value={isDark} onToggle={toggleTheme} colors={colors} />
-              <ToggleRow label="Daily Practice Reminder" sublabel="Get reminded to practice each day" value={dailyReminderEnabled} onToggle={() => setDailyReminderEnabled(!dailyReminderEnabled)} colors={colors} />
-
-              <TouchableOpacity
-                style={[styles.actionRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-                onPress={handleResetTips}
-              >
-                <Ionicons name="refresh-outline" size={18} color={colors.primary} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.actionRowLabel, { color: colors.text }]}>Reset dismissed tips</Text>
-                </View>
-                {tipsResetDone && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
-              </TouchableOpacity>
-
-              <View style={[styles.infoCard, { backgroundColor: colors.inputBackground, borderColor: colors.border, marginTop: 12 }]}>
-                <View style={styles.infoRow}>
-                  <Ionicons name="mail-outline" size={18} color={colors.secondaryText} />
-                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Email</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{profile.email || "Not set"}</Text>
-                </View>
-                <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.infoRow}>
-                  <Ionicons name="information-circle-outline" size={18} color={colors.secondaryText} />
-                  <Text style={[styles.infoLabel, { color: colors.secondaryText }]}>Version</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>1.1.0</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.logoutBtn, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
-                onPress={() => setLogoutModalVisible(true)}
-              >
-                <Ionicons name="log-out-outline" size={20} color={colors.text} />
-                <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.deleteBtn} onPress={() => setDeleteModalVisible(true)}>
-                <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                <Text style={styles.deleteBtnText}>Delete Account</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Navigation menu */}
+          <View style={styles.menuSection}>
+            <NavRow
+              icon="person-outline"
+              label="Edit Profile"
+              sublabel="Name, age, city, bio"
+              onPress={() => router.push("/edit-profile")}
+              colors={colors}
+            />
+            <NavRow
+              icon="newspaper-outline"
+              label="My Posts"
+              sublabel="View and manage your posts"
+              onPress={() => router.push("/my-posts")}
+              colors={colors}
+            />
+            <NavRow
+              icon="trophy-outline"
+              label="Achievements"
+              sublabel={`${achievements.length} of 7 earned`}
+              onPress={() => router.push("/achievements")}
+              colors={colors}
+            />
+            <NavRow
+              icon="settings-outline"
+              label="Settings"
+              sublabel="Theme, reminders, account"
+              onPress={() => router.push("/settings")}
+              colors={colors}
+            />
+          </View>
         </ScrollView>
       </SafeAreaView>
-
-      {/* Save confirm */}
-      <ConfirmModal
-        visible={saveModalVisible}
-        title={saveError ? "Cannot Save" : "Save Changes?"}
-        message={saveError || "Your profile will be updated."}
-        confirmLabel={saveError ? "OK" : "Save"}
-        cancelLabel={saveError ? undefined : "Cancel"}
-        dangerous={false}
-        onConfirm={handleConfirmSave}
-        onCancel={() => setSaveModalVisible(false)}
-      />
-
-      {/* Log out confirm */}
-      <ConfirmModal
-        visible={logoutModalVisible}
-        title="Log Out?"
-        message="You'll need to sign in again to access your account."
-        confirmLabel="Log Out"
-        cancelLabel="Cancel"
-        dangerous={false}
-        onConfirm={async () => { setLogoutModalVisible(false); await signOut(); }}
-        onCancel={() => setLogoutModalVisible(false)}
-      />
-
-      {/* Delete account 2-step modal */}
-      <DeleteAccountModal
-        visible={deleteModalVisible}
-        onCancel={() => setDeleteModalVisible(false)}
-        onConfirm={async (password: string) => {
-          await deleteAccount(password);
-          // On success, auth state change redirects to onboarding automatically
-        }}
-        colors={colors}
-      />
     </SwipeableTab>
   );
 }
@@ -645,205 +176,99 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Avatar section
-  avatarSection: { alignItems: "center", paddingTop: 24, paddingBottom: 12 },
+  // Avatar
+  avatarSection: { alignItems: "center", paddingTop: 28, paddingBottom: 16 },
   avatarCircle: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
-  heroName: { fontSize: 22, fontWeight: "800" },
+  heroName: { fontSize: 22, fontWeight: "800", marginBottom: 4 },
+  cityRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  cityText: { fontSize: 13 },
 
-  // Interests card
-  interestsCard: {
+  // Stats
+  statsRow: {
+    flexDirection: "row",
     marginHorizontal: 16,
-    marginTop: 8,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    gap: 8,
+    overflow: "hidden",
   },
-  interestsTitle: { fontSize: 17, fontWeight: "800", marginBottom: 4 },
-  interestsEmpty: { fontSize: 14, fontStyle: "italic" },
-  interestRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+  statItem: {
+    flex: 1,
     alignItems: "center",
+    paddingVertical: 14,
+    gap: 3,
   },
-  interestRowText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  editInterestsBtn: {
-    alignSelf: "flex-end",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  editInterestsBtnText: { fontWeight: "700", fontSize: 13 },
+  statValue: { fontSize: 17, fontWeight: "800" },
+  statLabel: { fontSize: 11, fontWeight: "600" },
 
-  // Streak badge
-  streakBadge: {
-    alignSelf: "flex-start",
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  streakBadgeText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-
-  // Menu rows
-  menuSection: { marginHorizontal: 16, marginTop: 16, gap: 10 },
-  menuRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  menuRowLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
-  achieveMenuRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginHorizontal: 16,
-    marginTop: 10,
-  },
-
-  // Sub-sections (expandable)
-  subSection: {
+  // Interests
+  interestsCard: {
     marginHorizontal: 16,
     marginTop: 14,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    gap: 10,
-  },
-  subSectionTitle: { fontSize: 18, fontWeight: "800", marginBottom: 4 },
-
-  // Edit
-  label: { fontWeight: "700", fontSize: 15, marginBottom: 8 },
-  hobbyInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingLeft: 12,
-    paddingRight: 4,
-    paddingVertical: 4,
-  },
-  hobbyInput: { flex: 1, fontSize: 15, paddingVertical: 8 },
-  addHobbyBtn: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  hint: { fontSize: 12, fontStyle: "italic" },
-  tagWrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 8 },
-  saveBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 4,
-  },
-  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  cancelSubBtn: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-
-  // Posts
-  postsSectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  postsEmpty: { padding: 24, borderRadius: 12, borderWidth: 1, alignItems: "center", gap: 10 },
-  postsEmptyText: { fontSize: 14, textAlign: "center" },
-  postsCreateBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
-  postsCreateBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  // Badges
-  sectionSub: { fontSize: 13, marginBottom: 10 },
-  achieveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  achieveTile: {
-    width: "47%",
     padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
+  },
+  interestsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  interestsTitle: { fontSize: 15, fontWeight: "700" },
+  editChip: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  achieveTitle: { fontSize: 13, fontWeight: "700", textAlign: "center" },
-  achieveDesc: { fontSize: 11, textAlign: "center" },
-  achieveDate: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 2 },
+  editChipText: { fontSize: 12, fontWeight: "700" },
+  chipsScroll: { gap: 8 },
+  hobbyChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  hobbyChipText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  noHobbiesBtn: {
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  noHobbiesText: { fontWeight: "600", fontSize: 14 },
 
-  // Settings
-  toggleRow: {
+  // Streak banner
+  streakBanner: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+  },
+  streakBannerText: { color: "#fff", fontWeight: "700", fontSize: 14, flex: 1 },
+
+  // Nav menu
+  menuSection: { marginHorizontal: 16, marginTop: 16, gap: 10 },
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
     borderRadius: 14,
     borderWidth: 1,
   },
-  toggleLabel: { fontSize: 15, fontWeight: "600" },
-  toggleSub: { fontSize: 12, marginTop: 2 },
-  toggleTrack: { width: 46, height: 26, borderRadius: 13, justifyContent: "center" },
-  toggleThumb: {
-    width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff",
-    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 3, elevation: 2,
-  },
-  infoCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  infoRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
-  infoLabel: { fontSize: 14, width: 70 },
-  infoValue: { fontSize: 14, fontWeight: "600", flex: 1, textAlign: "right" },
-  infoDivider: { height: 1, marginLeft: 14 },
-  actionRow: {
-    flexDirection: "row", alignItems: "center", padding: 14,
-    borderRadius: 14, borderWidth: 1,
-  },
-  actionRowLabel: { fontSize: 15, fontWeight: "600" },
-  logoutBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, marginTop: 12,
-  },
-  logoutText: { fontSize: 16, fontWeight: "700" },
-  deleteBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 12, marginTop: 6,
-  },
-  deleteBtnText: { color: "#ef4444", fontSize: 14, fontWeight: "600" },
-
-  // Delete modal
-  modalOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center", alignItems: "center", padding: 24,
-  },
-  deleteModal: { width: "100%", borderRadius: 20, borderWidth: 1.5, padding: 24, gap: 12 },
-  deleteTitle: { fontSize: 20, fontWeight: "800", textAlign: "center", marginTop: 4 },
-  deleteBody: { fontSize: 14, lineHeight: 20, textAlign: "center" },
-  checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  checkbox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
-    alignItems: "center", justifyContent: "center", marginTop: 1,
-  },
-  checkLabel: { flex: 1, fontSize: 14, lineHeight: 20 },
-  deleteHint: { fontSize: 13, marginTop: 4 },
-  deleteInput: {
-    borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 14,
-    paddingVertical: 10, fontSize: 16, fontWeight: "700", letterSpacing: 2,
-  },
-  deleteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  deleteCancelBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  deleteCancelText: { fontSize: 15, fontWeight: "600" },
-  deleteConfirmBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  deleteConfirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  navRowIcon: { marginRight: 14 },
+  navRowLabel: { fontSize: 15, fontWeight: "700" },
+  navRowSub: { fontSize: 12, marginTop: 2 },
 });

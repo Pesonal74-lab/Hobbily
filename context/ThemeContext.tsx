@@ -2,9 +2,15 @@
  * ThemeContext
  * Light:  background #B8C4E4 (lavender) · primary #1B2D6B (dark navy) · cards #FFFFFF · accent #E86B5E (coral)
  * Dark:   background #1A1F35 · primary #4A6FD4 · cards #252D4A · accent #E86B5E
+ *
+ * Persistence: the user's choice is saved to AsyncStorage so it survives app restarts.
+ * On first launch (no saved pref) we fall back to the system colour scheme.
  */
 import { createContext, useContext, useState, useEffect } from "react";
 import { Appearance } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const THEME_KEY = "@hobbily_theme";
 
 const lightTheme = {
   background: "#B8C4E4",
@@ -51,15 +57,27 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const systemPrefersDark = Appearance.getColorScheme() === "dark";
-  const [isDark, setIsDark] = useState(systemPrefersDark);
+  const [isDark, setIsDark] = useState(Appearance.getColorScheme() === "dark");
 
-  useEffect(() => setIsDark(systemPrefersDark), [systemPrefersDark]);
+  // On mount: load persisted preference (overrides system default if set)
+  useEffect(() => {
+    AsyncStorage.getItem(THEME_KEY).then((saved) => {
+      if (saved === "dark") setIsDark(true);
+      else if (saved === "light") setIsDark(false);
+      // If null → keep system default already set in useState
+    });
+  }, []);
+
+  function toggleTheme() {
+    setIsDark((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem(THEME_KEY, next ? "dark" : "light");
+      return next;
+    });
+  }
 
   return (
-    <ThemeContext.Provider
-      value={{ isDark, colors: isDark ? darkTheme : lightTheme, toggleTheme: () => setIsDark((p) => !p) }}
-    >
+    <ThemeContext.Provider value={{ isDark, colors: isDark ? darkTheme : lightTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
