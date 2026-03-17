@@ -14,6 +14,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useProfile } from "../../context/ProfileContext";
 import { useTime } from "../../context/TimeContext";
 import { useProgress } from "../../context/ProgressContext";
+import { useNotifications } from "../../context/NotificationsContext";
 import SwipeableTab from "../../components/SwipeableTab";
 import { useState, useEffect } from "react";
 
@@ -65,7 +66,7 @@ const SUGGESTED = [
 export default function HomeScreen() {
   const { colors } = useTheme();
   const { profile } = useProfile();
-  const { tasks } = useTime();
+  const { tasks, toggleComplete } = useTime();
   const { currentStreak, streakFreezeAvailable, useStreakFreeze } = useProgress();
   const weather = useWeatherCompact(profile.city);
 
@@ -131,9 +132,13 @@ export default function HomeScreen() {
                       `${(parseInt(t.time.split(":")[0]) + Math.floor((t.duration || 60) / 60)).toString().padStart(2, "0")}:${((parseInt(t.time.split(":")[1]) + (t.duration || 60) % 60) % 60).toString().padStart(2, "0")}`
                     )}
                   </Text>
-                  <View style={[styles.checkBox, t.completed && styles.checkBoxDone]}>
+                  <TouchableOpacity
+                    style={[styles.checkBox, t.completed && styles.checkBoxDone]}
+                    onPress={() => toggleComplete(t.id)}
+                    activeOpacity={0.7}
+                  >
                     {t.completed && <Ionicons name="checkmark" size={14} color="#22C55E" />}
-                  </View>
+                  </TouchableOpacity>
                 </View>
               ))
             )}

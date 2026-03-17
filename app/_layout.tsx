@@ -6,6 +6,7 @@ import { PostsProvider, usePosts } from "../context/PostsContext";
 import { TimeProvider } from "../context/TimeContext";
 import { CommunityProvider } from "../context/CommunityContext";
 import { ProgressProvider } from "../context/ProgressContext";
+import { NotificationsProvider } from "../context/NotificationsContext";
 import { Image, Animated, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { TipsResetProvider } from "../components/TipBanner";
@@ -79,7 +80,9 @@ export default function RootLayout() {
               <TimeProvider>
                 <CommunityProvider>
                   <ProgressProvider>
-                    <AppShell />
+                    <NotificationsProvider>
+                      <AppShell />
+                    </NotificationsProvider>
                   </ProgressProvider>
                 </CommunityProvider>
               </TimeProvider>

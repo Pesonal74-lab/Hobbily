@@ -37,7 +37,7 @@ export default function TabsLayout() {
       })}
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
-      <Tabs.Screen name="community" options={{ title: "community" }} />
+      <Tabs.Screen name="community" options={{ title: "Community" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
       {/* These screens remain accessible via router.push but are not shown in the tab bar */}
       <Tabs.Screen name="time-manager" options={{ href: null }} />

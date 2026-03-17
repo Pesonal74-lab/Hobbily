@@ -1,90 +1,317 @@
 /**
- * Onboarding — shown on first launch / when not authenticated.
- *
- * Steps:
- *   0  Welcome          — Create Account / Log In + theme toggle
- *   1  Account          — email + password form (sign-up OR sign-in)
- *   2  Your Profile     — name, city, age + light/dark preference
- *   3  Select Interests — hobby chip grid
- *   4  Free Time        — how much spare time per day
- *   5  App Features     — feature showcase, then finish → tabs
+ * Onboarding — shown on first launch and when not authenticated.
+ * 6 steps: Welcome → Account (Firebase Auth) → Basic Info → Interests → Free Time → Feature Intro
  */
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Dimensions, Animated, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Switch,
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
+  Dimensions, Animated, Image, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Modal, FlatList,
 } from "react-native";
 import { useState, useRef, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../lib/firebase";
 import { useProfile } from "../context/ProfileContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { FreeTimePerDay } from "../types/Profile";
 
-const { width: SW } = Dimensions.get("window");
+const { width: SCREEN_W } = Dimensions.get("window");
 const TOTAL_STEPS = 6;
 
-// ── Data ──────────────────────────────────────────────────────────────────────
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+const WEEK_DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
 
-const INTEREST_OPTIONS = [
-  "Music", "Gaming", "Art", "Sports", "Coding", "Language",
-  "Dance", "Cooking", "Photography", "Reading", "Film", "Writing",
+// ── Hobby/interest data ───────────────────────────────────────────────────────
+
+const HOBBY_OPTIONS: { label: string; icon: keyof typeof import("@expo/vector-icons").Ionicons.glyphMap }[] = [
+  { label: "Music", icon: "musical-notes-outline" },
+  { label: "Sports", icon: "football-outline" },
+  { label: "Photography", icon: "camera-outline" },
+  { label: "Drawing & Art", icon: "color-palette-outline" },
+  { label: "Coding", icon: "code-slash-outline" },
+  { label: "Cooking", icon: "restaurant-outline" },
+  { label: "Gaming", icon: "game-controller-outline" },
+  { label: "Reading", icon: "book-outline" },
+  { label: "Dance", icon: "body-outline" },
+  { label: "Film & Video", icon: "videocam-outline" },
+  { label: "Languages", icon: "globe-outline" },
+  { label: "Science", icon: "flask-outline" },
+  { label: "Writing", icon: "pencil-outline" },
+  { label: "Theater", icon: "happy-outline" },
+  { label: "Yoga", icon: "accessibility-outline" },
+  { label: "Fashion", icon: "shirt-outline" },
 ];
 
-const FREE_TIME_OPTIONS: { label: string; value: FreeTimePerDay }[] = [
-  { label: "Less than 30 min", value: "<30" },
-  { label: "30 – 60 min",      value: "30-60" },
-  { label: "1 – 2 hours",      value: "1-2h" },
-  { label: "2+ hours",         value: "2h+" },
+const INTEREST_OPTIONS = [
+  { label: "Music" }, { label: "Gaming" },
+  { label: "Art" }, { label: "Sports" },
+  { label: "Coding" }, { label: "Language" },
+  { label: "Dance" }, { label: "Cooking" },
+  { label: "Photography" }, { label: "Reading" },
+  { label: "Other.." },
+];
+const PREDEFINED_LABELS = new Set(HOBBY_OPTIONS.map((h) => h.label));
+
+const FREE_TIME_MOCKUP = [
+  { label: "Less than 30 min", value: "<30" as const },
+  { label: "30 - 60min",       value: "30-60" as const },
+  { label: "1 - 2 hour",       value: "1-2h" as const },
+  { label: "Set time",         value: "2h+" as const },
 ];
 
 const FEATURE_ROWS = [
-  { icon: "search-outline"      as const, label: "Discover opportunities" },
-  { icon: "time-outline"        as const, label: "Manage your time" },
-  { icon: "chatbubbles-outline" as const, label: "Connect with peers" },
+  { icon: "search-outline" as const, label: "Discover opportunities" },
+  { icon: "time-outline"   as const, label: "Manage your time" },
+  { icon: "home-outline"   as const, label: "Join community" },
 ];
 
-// ── Auth error → readable string ──────────────────────────────────────────────
+// ── Auth error helper ─────────────────────────────────────────────────────────
 
-function friendlyError(code: string): string {
+function friendlyAuthError(code: string): string {
   switch (code) {
-    case "auth/email-already-in-use":  return "An account with this email already exists. Try logging in instead.";
-    case "auth/invalid-email":         return "Please enter a valid email address.";
-    case "auth/weak-password":         return "Password must be at least 6 characters.";
-    case "auth/user-not-found":        return "No account found with this email.";
-    case "auth/wrong-password":        return "Incorrect password. Please try again.";
-    case "auth/invalid-credential":    return "Incorrect email or password.";
-    case "auth/too-many-requests":     return "Too many attempts. Please wait a moment.";
-    default:                           return "Something went wrong. Please try again.";
+    case "auth/email-already-in-use": return "An account with this email already exists. Try signing in instead.";
+    case "auth/invalid-email":        return "Please enter a valid email address.";
+    case "auth/weak-password":        return "Password must be at least 6 characters.";
+    case "auth/user-not-found":       return "No account found with this email.";
+    case "auth/wrong-password":       return "Incorrect password. Please try again.";
+    case "auth/invalid-credential":   return "Incorrect email or password.";
+    case "auth/too-many-requests":    return "Too many attempts. Please wait a moment and try again.";
+    default:                          return "Something went wrong. Please try again.";
   }
 }
 
-// ── Reusable input ─────────────────────────────────────────────────────────────
+// ── Date utilities ────────────────────────────────────────────────────────────
 
-function Field({
-  icon, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, colors, autoCapitalize,
+function daysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+function firstWeekdayOf(year: number, month: number) {
+  return new Date(year, month, 1).getDay(); // 0 = Sunday
+}
+function formatDob(date: Date): string {
+  const d = date.getDate().toString().padStart(2, "0");
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  return `${d}/${m}/${date.getFullYear()}`;
+}
+function ageFromDob(date: Date): string {
+  const today = new Date();
+  let age = today.getFullYear() - date.getFullYear();
+  const m = today.getMonth() - date.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < date.getDate())) age--;
+  return String(age);
+}
+
+// ── DatePickerModal ───────────────────────────────────────────────────────────
+
+function DatePickerModal({
+  visible, value, onConfirm, onCancel, colors,
 }: {
-  icon?: keyof typeof Ionicons.glyphMap;
-  placeholder: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  secureTextEntry?: boolean;
-  keyboardType?: any;
+  visible: boolean;
+  value: Date | null;
+  onConfirm: (d: Date) => void;
+  onCancel: () => void;
   colors: any;
-  autoCapitalize?: any;
 }) {
+  const today = new Date();
+  const MAX_YEAR = today.getFullYear() - 13; // must be ≥ 13
+  const MIN_YEAR = 1920;
+
+  const [viewYear,  setViewYear]  = useState(value ? value.getFullYear()  : 2005);
+  const [viewMonth, setViewMonth] = useState(value ? value.getMonth()     : 0);
+  const [selDay,    setSelDay]    = useState<number | null>(value ? value.getDate() : null);
+  const [mode,      setMode]      = useState<"calendar" | "year">("calendar");
+
+  // Year list: MAX_YEAR → MIN_YEAR (descending)
+  const yearList = Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MAX_YEAR - i);
+  const yearListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (value) {
+      setViewYear(value.getFullYear());
+      setViewMonth(value.getMonth());
+      setSelDay(value.getDate());
+    } else {
+      setViewYear(2005); setViewMonth(0); setSelDay(null);
+    }
+    setMode("calendar");
+  }, [visible]);
+
+  // Scroll year list to selected year when entering year mode
+  useEffect(() => {
+    if (mode === "year") {
+      const idx = yearList.indexOf(viewYear);
+      if (idx >= 0) {
+        setTimeout(() => yearListRef.current?.scrollToIndex({ index: idx, animated: false }), 50);
+      }
+    }
+  }, [mode]);
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
+  }
+
+  // Build grid cells: null = empty padding, number = day
+  const totalDays = daysInMonth(viewYear, viewMonth);
+  const offset    = firstWeekdayOf(viewYear, viewMonth);
+  const cells: (number | null)[] = [
+    ...Array(offset).fill(null),
+    ...Array.from({ length: totalDays }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  function handleConfirm() {
+    if (selDay == null) return;
+    onConfirm(new Date(viewYear, viewMonth, selDay));
+  }
+
   return (
-    <View style={[styles.field, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      {icon && (
-        <Ionicons name={icon} size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
-      )}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={dp.overlay}>
+        <View style={[dp.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+
+          {/* ── Selected date banner ── */}
+          <View style={[dp.selectedBanner, { backgroundColor: colors.primary }]}>
+            <Text style={dp.selectedYear}>{viewYear}</Text>
+            <Text style={dp.selectedDateText}>
+              {selDay
+                ? `${MONTHS[viewMonth].slice(0, 3)} ${selDay}`
+                : "Select a date"}
+            </Text>
+          </View>
+
+          {/* ── Month / Year header ── */}
+          <View style={dp.header}>
+            <TouchableOpacity onPress={prevMonth} style={dp.navBtn} disabled={mode === "year"}>
+              <Ionicons name="chevron-back" size={22} color={mode === "year" ? colors.border : colors.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={dp.monthYearBtn}
+              onPress={() => setMode((m) => m === "year" ? "calendar" : "year")}
+            >
+              <Text style={[dp.monthYearText, { color: colors.primary }]}>
+                {MONTHS[viewMonth]} {viewYear}
+              </Text>
+              <Ionicons
+                name={mode === "year" ? "chevron-up" : "chevron-down"}
+                size={15}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={nextMonth} style={dp.navBtn} disabled={mode === "year"}>
+              <Ionicons name="chevron-forward" size={22} color={mode === "year" ? colors.border : colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Year picker ── */}
+          {mode === "year" ? (
+            <FlatList
+              ref={yearListRef}
+              data={yearList}
+              keyExtractor={(y) => String(y)}
+              style={dp.yearList}
+              showsVerticalScrollIndicator={false}
+              getItemLayout={(_, index) => ({ length: 44, offset: 44 * index, index })}
+              renderItem={({ item: y }) => {
+                const active = y === viewYear;
+                return (
+                  <TouchableOpacity
+                    style={[dp.yearItem, active && { backgroundColor: colors.primary }]}
+                    onPress={() => { setViewYear(y); setMode("calendar"); }}
+                  >
+                    <Text style={[dp.yearText, { color: active ? "#fff" : colors.text }]}>{y}</Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          ) : (
+            <>
+              {/* ── Weekday headers ── */}
+              <View style={dp.weekRow}>
+                {WEEK_DAYS.map((d) => (
+                  <Text key={d} style={[dp.weekDay, { color: colors.secondaryText }]}>{d}</Text>
+                ))}
+              </View>
+
+              {/* ── Day grid ── */}
+              <View style={dp.grid}>
+                {cells.map((d, i) => {
+                  const isSelected = d !== null && d === selDay;
+                  const isToday =
+                    d !== null &&
+                    viewYear  === today.getFullYear() &&
+                    viewMonth === today.getMonth() &&
+                    d === today.getDate();
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={[
+                        dp.cell,
+                        isSelected && { backgroundColor: colors.accent },
+                        !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.accent },
+                      ]}
+                      onPress={() => d && setSelDay(d)}
+                      disabled={!d}
+                      activeOpacity={d ? 0.7 : 1}
+                    >
+                      {d != null && (
+                        <Text style={[dp.cellText, { color: isSelected ? "#fff" : colors.text }]}>
+                          {d}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          {/* ── Actions ── */}
+          <View style={dp.actions}>
+            <TouchableOpacity
+              style={[dp.cancelBtn, { borderColor: colors.border }]}
+              onPress={onCancel}
+            >
+              <Text style={[dp.cancelText, { color: colors.text }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[dp.confirmBtn, { backgroundColor: selDay ? colors.primary : colors.border }]}
+              onPress={handleConfirm}
+              disabled={selDay == null}
+            >
+              <Text style={dp.confirmText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Shared icon input ─────────────────────────────────────────────────────────
+
+function IconInput({ icon, placeholder, value, onChangeText, secureTextEntry, keyboardType, autoCapitalize, colors }: any) {
+  return (
+    <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+      {icon && <Ionicons name={icon} size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />}
       <TextInput
-        style={[styles.fieldText, { color: colors.text }]}
+        style={[styles.iconInputText, { color: colors.text }]}
         placeholder={placeholder}
-        placeholderTextColor={colors.secondaryText}
+        placeholderTextColor={colors.accent}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secureTextEntry}
@@ -96,48 +323,224 @@ function Field({
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function OnboardingScreen() {
+  const { colors } = useTheme();
+  const { saveProfile, profile } = useProfile();
+  const { signUp, signIn, user } = useAuth();
+
+  const [step, setStep] = useState(0);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Auth state
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [signInMode,  setSignInMode]  = useState(false);
+  const [authError,   setAuthError]   = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Profile state
+  const [username,         setUsername]         = useState("");
+  const [city,             setCity]             = useState("");
+  const [dob,              setDob]              = useState<Date | null>(null);
+  const [selectedHobbies,  setSelectedHobbies]  = useState<string[]>([]);
+  const [freeTime,         setFreeTime]         = useState<FreeTimePerDay | "">("");
+
+  // Date picker visibility
+  const [dobPickerVisible, setDobPickerVisible] = useState(false);
+
+  useEffect(() => {
+    if (user && step === 0) setStep(2);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function animateTo(nextStep: number) {
+    const dir = nextStep > step ? -1 : 1;
+    Animated.timing(slideAnim, { toValue: dir * SCREEN_W * 0.3, duration: 150, useNativeDriver: true }).start(() => {
+      setStep(nextStep);
+      slideAnim.setValue(-dir * SCREEN_W * 0.3);
+      Animated.timing(slideAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+    });
+  }
+
+  function goNext() { if (step < TOTAL_STEPS - 1) animateTo(step + 1); }
+  function goBack() { if (step > 0) animateTo(step - 1); }
+
+  function toggleHobby(label: string) {
+    setSelectedHobbies((prev) =>
+      prev.includes(label) ? prev.filter((h) => h !== label) : [...prev, label]
+    );
+  }
+
+  async function handleAccountContinue() {
+    setAuthError(""); setAuthLoading(true);
+    try {
+      if (signInMode) {
+        await signIn(email.trim(), password);
+        animateTo(2);
+      } else {
+        await signUp(email.trim(), password);
+        goNext();
+      }
+    } catch (err: any) {
+      setAuthError(friendlyAuthError(err.code ?? ""));
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function finish() {
+    const age = dob ? ageFromDob(dob) : "";
+    await saveProfile({
+      ...profile,
+      username: username.trim() || "explorer",
+      email: email.trim(),
+      age,
+      city: city.trim(),
+      preferredCity: city.trim() || "London",
+      hobbies: selectedHobbies,
+      freeTimePerDay: (freeTime as FreeTimePerDay) || "30-60",
+      hasOnboarded: true,
+    });
+    router.replace("/(tabs)/" as any);
+  }
+
+  // ── Validation ────────────────────────────────────────────────────────────
+
+  const emailValid    = email.trim().includes("@") && email.trim().includes(".");
+  const passwordValid = password.length >= 6;
+
+  const canContinue: boolean[] = [
+    true,
+    emailValid && passwordValid,
+    username.trim().length >= 2,
+    selectedHobbies.length >= 1,
+    freeTime !== "",
+    true,
+  ];
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {step > 0 && (
+        <View style={styles.progressRow}>
+          <TouchableOpacity onPress={goBack} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.dots}>
+            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  { backgroundColor: i <= step ? colors.primary : colors.border },
+                  i === step && styles.dotActive,
+                ]}
+              />
+            ))}
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+      )}
+
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <Animated.View style={[styles.stepWrap, { transform: [{ translateX: slideAnim }] }]}>
+          {step === 0 && (
+            <StepWelcome
+              colors={colors}
+              onCreateAccount={() => { setSignInMode(false); animateTo(1); }}
+              onLogIn={() => { setSignInMode(true); animateTo(1); }}
+            />
+          )}
+          {step === 1 && (
+            <StepAccount
+              colors={colors}
+              email={email} setEmail={setEmail}
+              password={password} setPassword={setPassword}
+              name={username} setName={setUsername}
+              signInMode={signInMode} setSignInMode={setSignInMode}
+              authError={authError} setAuthError={setAuthError}
+              authLoading={authLoading}
+              dob={dob}
+              onOpenDob={() => setDobPickerVisible(true)}
+              canNext={canContinue[1]}
+              onNext={handleAccountContinue}
+              onClose={goBack}
+            />
+          )}
+          {step === 2 && (
+            <StepBasicInfo
+              colors={colors}
+              username={username} setUsername={setUsername}
+              city={city} setCity={setCity}
+              dob={dob} onOpenDob={() => setDobPickerVisible(true)}
+              canNext={canContinue[2]} onNext={goNext}
+            />
+          )}
+          {step === 3 && (
+            <StepInterests
+              colors={colors}
+              selected={selectedHobbies}
+              onToggle={toggleHobby}
+              canNext={canContinue[3]}
+              onNext={goNext}
+            />
+          )}
+          {step === 4 && (
+            <StepFreeTime
+              colors={colors}
+              value={freeTime}
+              onSelect={setFreeTime}
+              canNext={canContinue[4]}
+              onNext={goNext}
+            />
+          )}
+          {step === 5 && <StepFeatures colors={colors} onFinish={finish} />}
+        </Animated.View>
+      </KeyboardAvoidingView>
+
+      {/* Single global date picker modal */}
+      <DatePickerModal
+        visible={dobPickerVisible}
+        value={dob}
+        onConfirm={(d) => { setDob(d); setDobPickerVisible(false); }}
+        onCancel={() => setDobPickerVisible(false)}
+        colors={colors}
+      />
+    </SafeAreaView>
+  );
+}
+
 // ── Step 0: Welcome ───────────────────────────────────────────────────────────
 
-function StepWelcome({
-  colors, isDark, toggleTheme, onCreateAccount, onLogIn,
-}: {
-  colors: any; isDark: boolean; toggleTheme: () => void;
-  onCreateAccount: () => void; onLogIn: () => void;
+function StepWelcome({ colors, onCreateAccount, onLogIn }: {
+  colors: any; onCreateAccount: () => void; onLogIn: () => void;
 }) {
   return (
-    <View style={styles.welcomeRoot}>
-      {/* Theme toggle — top right */}
-      <TouchableOpacity
-        onPress={toggleTheme}
-        style={[styles.themeToggle, { backgroundColor: colors.card, borderColor: colors.border }]}
-      >
-        <Ionicons name={isDark ? "sunny-outline" : "moon-outline"} size={20} color={colors.primary} />
-      </TouchableOpacity>
-
-      {/* Logo area */}
-      <View style={styles.welcomeCenter}>
-        <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-          <Ionicons name="compass" size={52} color="#fff" />
-        </View>
-        <Text style={[styles.appName, { color: colors.primary }]}>HOBBILY</Text>
-        <Text style={[styles.tagline, { color: colors.secondaryText }]}>
-          Discover your interests{"\n"}&amp; build your future
+    <View style={styles.welcomeContainer}>
+      <View style={styles.welcomeTop}>
+        <Image source={require("../assets/images/Hobbily_Logo.png")} style={styles.welcomeLogo} />
+        <Text style={[styles.welcomeTitle, { color: colors.primary }]}>
+          Welcome to{"\n"}
+          <Text style={styles.welcomeTitleBold}>Hobbily</Text>
+        </Text>
+        <Text style={[styles.welcomeTagline, { color: colors.primary }]}>
+          Discover your interests{"\n"}&{"\n"}Build your future
         </Text>
       </View>
-
-      {/* Buttons */}
       <View style={styles.welcomeButtons}>
         <TouchableOpacity
-          style={[styles.bigBtn, { backgroundColor: colors.accent }]}
+          style={[styles.welcomeBtn, { backgroundColor: colors.primary }]}
           onPress={onCreateAccount}
         >
-          <Text style={styles.bigBtnText}>Create Account</Text>
+          <Text style={styles.welcomeBtnText}>Create Account</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.bigBtnOutline, { borderColor: colors.primary }]}
+          style={[styles.welcomeBtn, { backgroundColor: colors.primary, marginTop: 16 }]}
           onPress={onLogIn}
         >
-          <Text style={[styles.bigBtnOutlineText, { color: colors.primary }]}>Log In</Text>
+          <Text style={styles.welcomeBtnText}>Log In</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -147,59 +550,91 @@ function StepWelcome({
 // ── Step 1: Account ───────────────────────────────────────────────────────────
 
 function StepAccount({
-  colors, signInMode, setSignInMode,
-  email, setEmail, password, setPassword,
-  authError, setAuthError, authLoading, canNext, onNext,
+  colors, email, setEmail, password, setPassword,
+  name, setName, signInMode, setSignInMode,
+  authError, setAuthError, authLoading,
+  dob, onOpenDob, canNext, onNext, onClose,
 }: any) {
+  const [resetState, setResetState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function handleForgotPassword() {
+    const trimmed = email.trim();
+    if (!trimmed.includes("@")) {
+      setAuthError("Enter your email address above first.");
+      return;
+    }
+    setResetState("sending");
+    try {
+      await sendPasswordResetEmail(auth, trimmed);
+      setResetState("sent");
+    } catch {
+      setResetState("error");
+    }
+  }
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.authContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <View style={[styles.authSheet, { backgroundColor: colors.card }]}>
+      <TouchableOpacity
+        onPress={onClose}
+        style={[styles.authCloseBtn, { backgroundColor: colors.primary }]}
       >
-        {/* Title */}
-        <Text style={[styles.authTitle, { color: colors.primary }]}>
+        <Ionicons name="close" size={20} color="#fff" />
+      </TouchableOpacity>
+
+      <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.authTitle, { color: colors.text }]}>
           {signInMode ? "Log In" : "Create Account"}
         </Text>
-
-        {/* Toggle between modes */}
-        <TouchableOpacity
-          onPress={() => { setSignInMode(!signInMode); setAuthError(""); }}
-          style={styles.authSwitchRow}
-        >
-          <Text style={[styles.authSwitchText, { color: colors.secondaryText }]}>
-            {signInMode ? "Don't have an account? " : "Already have an account? "}
-            <Text style={[styles.authSwitchLink, { color: colors.accent }]}>
+        <TouchableOpacity onPress={() => { setSignInMode(!signInMode); setAuthError(""); }}>
+          <Text style={[styles.authSwitch, { color: colors.text }]}>
+            {signInMode ? "Don't have an account? " : "Already registered? "}
+            <Text style={{ fontWeight: "800", textDecorationLine: "underline" }}>
               {signInMode ? "Create one" : "Log In"}
             </Text>
           </Text>
         </TouchableOpacity>
 
-        {/* Fields */}
         <View style={styles.authFields}>
-          <Field
+          {!signInMode && (
+            <IconInput
+              icon="person-outline"
+              placeholder="Name"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              colors={colors}
+            />
+          )}
+          <IconInput
             icon="mail-outline"
-            placeholder="Email address"
+            placeholder="Email"
             value={email}
-            onChangeText={(v) => { setEmail(v); setAuthError(""); }}
+            onChangeText={(v: string) => { setEmail(v); setAuthError(""); }}
             keyboardType="email-address"
             colors={colors}
           />
-          <Field
+          <IconInput
             icon="lock-closed-outline"
-            placeholder="Password (min 6 characters)"
+            placeholder="Password"
             value={password}
-            onChangeText={(v) => { setPassword(v); setAuthError(""); }}
+            onChangeText={(v: string) => { setPassword(v); setAuthError(""); }}
             secureTextEntry
             colors={colors}
           />
+          {!signInMode && (
+            <TouchableOpacity
+              style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+              onPress={onOpenDob}
+            >
+              <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
+              <Text style={[styles.iconInputText, { color: dob ? colors.text : colors.accent }]}>
+                {dob ? formatDob(dob) : "Date of Birth"}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Error */}
         {authError ? (
           <View style={[styles.errorBox, { backgroundColor: colors.danger + "18", borderColor: colors.danger }]}>
             <Ionicons name="alert-circle-outline" size={16} color={colors.danger} style={{ marginRight: 8 }} />
@@ -207,209 +642,172 @@ function StepAccount({
           </View>
         ) : null}
 
-        {/* Forgot password (sign-in only) */}
         {signInMode && (
-          <TouchableOpacity style={{ marginTop: 4, alignSelf: "flex-end" }}>
-            <Text style={[styles.forgotText, { color: colors.secondaryText }]}>
-              Forgot password?
-            </Text>
+          <TouchableOpacity style={{ alignItems: "center", marginTop: 8 }} onPress={handleForgotPassword} disabled={resetState === "sending"}>
+            {resetState === "sent" ? (
+              <Text style={[styles.authSwitch, { color: "#10B981" }]}>Reset email sent! Check your inbox.</Text>
+            ) : resetState === "error" ? (
+              <Text style={[styles.authSwitch, { color: colors.danger }]}>Couldn't send reset email. Check address.</Text>
+            ) : (
+              <Text style={[styles.authSwitch, { color: colors.text }]}>
+                {resetState === "sending" ? "Sending..." : <Text style={{ textDecorationLine: "underline" }}>Forgot Password?</Text>}
+              </Text>
+            )}
           </TouchableOpacity>
         )}
-
-        {/* Submit */}
-        <TouchableOpacity
-          style={[
-            styles.submitBtn,
-            { backgroundColor: colors.accent, opacity: canNext && !authLoading ? 1 : 0.45 },
-          ]}
-          onPress={canNext && !authLoading ? onNext : undefined}
-        >
-          {authLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitBtnText}>
-              {signInMode ? "Log In" : "Create Account"}
-            </Text>
-          )}
-        </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      <TouchableOpacity
+        style={[styles.authArrowBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
+        onPress={canNext && !authLoading ? onNext : undefined}
+      >
+        {authLoading
+          ? <ActivityIndicator color="#fff" />
+          : <Ionicons name="arrow-forward" size={24} color="#fff" />
+        }
+      </TouchableOpacity>
+    </View>
   );
 }
 
-// ── Step 2: Your Profile ──────────────────────────────────────────────────────
+// ── Step 2: Basic Info ────────────────────────────────────────────────────────
 
-function StepYourProfile({
-  colors, isDark, toggleTheme,
-  username, setUsername, age, setAge, city, setCity,
-  ageError, canNext, onNext,
-}: any) {
+function StepBasicInfo({ colors, username, setUsername, city, setCity, dob, onOpenDob, canNext, onNext }: any) {
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.profileContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Avatar placeholder */}
-        <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
-          <Ionicons name="person-outline" size={48} color={colors.primary} />
-        </View>
+    <ScrollView contentContainerStyle={styles.infoContent} keyboardShouldPersistTaps="handled">
+      <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
+        <Ionicons name="person-outline" size={52} color={colors.primary} />
+      </View>
 
-        <Text style={[styles.stepTitle, { color: colors.primary }]}>Your Profile</Text>
-        <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
-          You can change these later
-        </Text>
-
-        <View style={styles.profileFields}>
-          <Field
-            icon="person-outline"
-            placeholder="Display name *"
+      <View style={styles.infoFields}>
+        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          <TextInput
+            style={[styles.iconInputText, { color: colors.text }]}
+            placeholder="Name"
+            placeholderTextColor={colors.accent}
             value={username}
             onChangeText={setUsername}
             autoCapitalize="words"
-            colors={colors}
+            autoCorrect={false}
           />
-          <Field
-            icon="location-outline"
-            placeholder="City (optional)"
-            value={city}
-            onChangeText={setCity}
-            autoCapitalize="words"
-            colors={colors}
-          />
-          <Field
-            icon="calendar-outline"
-            placeholder="Age (optional, 13–150)"
-            value={age}
-            onChangeText={setAge}
-            keyboardType="number-pad"
-            colors={colors}
-          />
-          {ageError ? (
-            <Text style={[styles.fieldError, { color: colors.danger }]}>{ageError}</Text>
-          ) : null}
         </View>
 
-        {/* Appearance preference */}
-        <View style={[styles.appearanceRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Ionicons
-            name={isDark ? "moon-outline" : "sunny-outline"}
-            size={20}
-            color={colors.primary}
-            style={{ marginRight: 12 }}
-          />
-          <Text style={[styles.appearanceLabel, { color: colors.text }]}>
-            {isDark ? "Dark mode" : "Light mode"}
-          </Text>
-          <Switch
-            value={isDark}
-            onValueChange={toggleTheme}
-            trackColor={{ false: colors.border, true: colors.primary + "80" }}
-            thumbColor={isDark ? colors.primary : colors.secondaryText}
+        <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          <TextInput
+            style={[styles.iconInputText, { color: colors.text }]}
+            placeholder="City"
+            placeholderTextColor={colors.accent}
+            value={city}
+            onChangeText={setCity}
+            autoCorrect={false}
           />
         </View>
 
         <TouchableOpacity
-          style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
-          onPress={canNext ? onNext : undefined}
+          style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+          onPress={onOpenDob}
         >
-          <Text style={styles.nextBtnText}>Next</Text>
+          <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} style={{ marginRight: 10 }} />
+          <Text style={[styles.iconInputText, { color: dob ? colors.text : colors.accent }]}>
+            {dob ? formatDob(dob) : "Date of Birth"}
+          </Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: "auto" }} />
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
+        onPress={canNext ? onNext : undefined}
+      >
+        <Text style={styles.nextBtnText}>Next</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
-// ── Step 3: Select Interests ──────────────────────────────────────────────────
+// ── Step 3: Interests ─────────────────────────────────────────────────────────
 
 function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
   const [customInput, setCustomInput] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   const customHobbies: string[] = selected.filter(
-    (h: string) => !INTEREST_OPTIONS.includes(h)
+    (h: string) => !PREDEFINED_LABELS.has(h) && !INTEREST_OPTIONS.some((o) => o.label === h)
   );
 
-  function addCustom() {
+  function addCustomHobby() {
     const label = customInput.trim();
-    if (!label || selected.includes(label)) return;
-    onToggle(label);
+    if (!label) return;
+    if (!selected.includes(label)) onToggle(label);
     setCustomInput("");
+    setShowCustomInput(false);
   }
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={styles.stepHeaderPad}>
-        <Text style={[styles.stepTitle, { color: colors.primary }]}>Select Interests</Text>
-        <Text style={[styles.stepSub, { color: colors.secondaryText }]}>
-          Pick at least one — you can add more later
-        </Text>
+      <View style={styles.stepHeader}>
+        <Text style={[styles.interestTitle, { color: colors.primary }]}>Select Interest</Text>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.interestScrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Predefined grid */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
         <View style={styles.interestGrid}>
-          {INTEREST_OPTIONS.map((label) => {
-            const active = selected.includes(label);
+          {INTEREST_OPTIONS.map((h) => {
+            const isOther = h.label === "Other..";
+            const active = isOther ? showCustomInput : selected.includes(h.label);
             return (
               <TouchableOpacity
-                key={label}
-                onPress={() => onToggle(label)}
+                key={h.label}
+                onPress={() => {
+                  if (isOther) setShowCustomInput((v) => !v);
+                  else onToggle(h.label);
+                }}
                 style={[
                   styles.interestChip,
-                  {
-                    backgroundColor: active ? colors.accent : colors.secondary,
-                    borderColor: active ? colors.accent : colors.border,
-                  },
+                  { backgroundColor: active ? colors.accent : colors.primary },
                 ]}
               >
-                <Text style={[styles.interestChipText, { color: active ? "#fff" : colors.primary }]}>
-                  {label}
-                </Text>
+                <Text style={styles.interestChipText}>{h.label}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Custom hobby input */}
-        <View style={styles.customRow}>
-          <View style={[styles.field, { backgroundColor: colors.card, borderColor: colors.border, flex: 1 }]}>
-            <TextInput
-              style={[styles.fieldText, { color: colors.text }]}
-              placeholder="Add your own..."
-              placeholderTextColor={colors.secondaryText}
-              value={customInput}
-              onChangeText={setCustomInput}
-              onSubmitEditing={addCustom}
-              returnKeyType="done"
-            />
+        {/* Custom hobby input — shown when "Other.." is tapped */}
+        {showCustomInput && (
+          <View style={[styles.customInputRow, { paddingHorizontal: 16, marginBottom: 12 }]}>
+            <View style={[styles.iconInputRow, { backgroundColor: colors.inputBackground, borderColor: colors.border, flex: 1 }]}>
+              <TextInput
+                style={[styles.iconInputText, { color: colors.text }]}
+                placeholder="Type your hobby..."
+                placeholderTextColor={colors.accent}
+                value={customInput}
+                onChangeText={setCustomInput}
+                onSubmitEditing={addCustomHobby}
+                returnKeyType="done"
+                autoFocus
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.customAddBtn, { backgroundColor: colors.primary }]}
+              onPress={addCustomHobby}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={addCustom}
-            style={[styles.customAddBtn, { backgroundColor: colors.primary }]}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        )}
 
-        {/* Custom chips */}
         {customHobbies.length > 0 && (
-          <View style={styles.customChipsRow}>
+          <View style={[styles.customChipsRow, { paddingHorizontal: 16 }]}>
             {customHobbies.map((h: string) => (
               <TouchableOpacity
                 key={h}
                 onPress={() => onToggle(h)}
-                style={[styles.customChip, { backgroundColor: colors.accent + "20", borderColor: colors.accent }]}
+                style={[styles.customChip, { backgroundColor: colors.primary + "18", borderColor: colors.primary }]}
               >
-                <Text style={[styles.customChipText, { color: colors.accent }]}>{h}</Text>
-                <Ionicons name="close-circle" size={14} color={colors.accent} />
+                <Text style={[styles.customChipText, { color: colors.primary }]}>{h}</Text>
+                <Ionicons name="close-circle" size={14} color={colors.primary} />
               </TouchableOpacity>
             ))}
           </View>
@@ -418,7 +816,7 @@ function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
 
       <View style={styles.stepFooter}>
         <TouchableOpacity
-          style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
+          style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
           onPress={canNext ? onNext : undefined}
         >
           <Text style={styles.nextBtnText}>Continue</Text>
@@ -432,13 +830,12 @@ function StepInterests({ colors, selected, onToggle, canNext, onNext }: any) {
 
 function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
   return (
-    <View style={styles.stepContentPad}>
-      <Text style={[styles.freeTimeQ, { color: colors.primary }]}>
-        How much free time{"\n"}do you have per day?
+    <View style={styles.stepContent}>
+      <Text style={[styles.freeTimeQuestion, { color: colors.primary }]}>
+        How much free time{"\n"}do you have ?
       </Text>
-
-      <View style={styles.freeTimeList}>
-        {FREE_TIME_OPTIONS.map((opt) => {
+      <View style={styles.freeTimeOptions}>
+        {FREE_TIME_MOCKUP.map((opt) => {
           const active = value === opt.value;
           return (
             <TouchableOpacity
@@ -447,22 +844,20 @@ function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
               style={[
                 styles.freeTimeCard,
                 {
-                  backgroundColor: active ? colors.accent : colors.card,
-                  borderColor: active ? colors.accent : colors.border,
+                  backgroundColor: active ? colors.primary : colors.inputBackground,
+                  borderColor: active ? colors.primary : colors.border,
                 },
               ]}
             >
-              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.text }]}>
+              <Text style={[styles.freeTimeLabel, { color: active ? "#fff" : colors.accent }]}>
                 {opt.label}
               </Text>
-              {active && <Ionicons name="checkmark-circle" size={20} color="#fff" />}
             </TouchableOpacity>
           );
         })}
       </View>
-
       <TouchableOpacity
-        style={[styles.nextBtn, { backgroundColor: colors.accent, opacity: canNext ? 1 : 0.4 }]}
+        style={[styles.nextBtn, { backgroundColor: colors.primary, opacity: canNext ? 1 : 0.4 }]}
         onPress={canNext ? onNext : undefined}
       >
         <Text style={styles.nextBtnText}>Continue</Text>
@@ -471,443 +866,145 @@ function StepFreeTime({ colors, value, onSelect, canNext, onNext }: any) {
   );
 }
 
-// ── Step 5: App Features ──────────────────────────────────────────────────────
+// ── Step 5: Feature Intro ─────────────────────────────────────────────────────
 
 function StepFeatures({ colors, onFinish }: { colors: any; onFinish: () => void }) {
   return (
-    <View style={styles.stepContentPad}>
-      <Text style={[styles.stepTitle, { color: colors.primary, textAlign: "center", marginBottom: 8 }]}>
-        You're all set!
-      </Text>
-      <Text style={[styles.stepSub, { color: colors.secondaryText, textAlign: "center", marginBottom: 32 }]}>
-        Here's what you can do with Hobbily
-      </Text>
-
-      <View style={styles.featureList}>
+    <View style={styles.stepContent}>
+      <Text style={[styles.featuresTitleLg, { color: colors.primary }]}>App Features</Text>
+      <View style={styles.featureRows}>
         {FEATURE_ROWS.map((f) => (
           <View
             key={f.label}
-            style={[styles.featureCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.featureRow, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
           >
-            <View style={[styles.featureIconWrap, { backgroundColor: colors.accent + "20" }]}>
-              <Ionicons name={f.icon} size={24} color={colors.accent} />
+            <Ionicons name={f.icon} size={26} color={colors.primary} style={{ marginRight: 14 }} />
+            <Text style={[styles.featureRowLabel, { color: colors.accent }]}>{f.label}</Text>
+            <View style={[styles.featureRowChevron, { backgroundColor: colors.primary }]}>
+              <Ionicons name="chevron-forward" size={16} color="#fff" />
             </View>
-            <Text style={[styles.featureLabel, { color: colors.primary }]}>{f.label}</Text>
           </View>
         ))}
       </View>
-
       <TouchableOpacity
-        style={[styles.nextBtn, { backgroundColor: colors.accent, marginTop: "auto" as any }]}
+        style={[styles.nextBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginTop: "auto" as any }]}
         onPress={onFinish}
       >
-        <Text style={styles.nextBtnText}>Get Started</Text>
+        <Text style={[styles.nextBtnText, { color: colors.primary }]}>Continue</Text>
       </TouchableOpacity>
     </View>
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
-export default function OnboardingScreen() {
-  const { colors, isDark, toggleTheme } = useTheme();
-  const { saveProfile, profile } = useProfile();
-  const { signUp, signIn, user } = useAuth();
-
-  const [step, setStep] = useState(0);
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  // Auth state
-  const [signInMode, setSignInMode] = useState(false);
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError]   = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-
-  // Profile state
-  const [username, setUsername] = useState("");
-  const [age, setAge]           = useState("");
-  const [city, setCity]         = useState("");
-  const [selectedHobbies, setSelectedHobbies] = useState<string[]>([]);
-  const [freeTime, setFreeTime] = useState<FreeTimePerDay | "">("");
-
-  // If user is already authenticated mid-onboarding, skip auth step
-  useEffect(() => {
-    if (user && step === 0) setStep(2);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Navigation ──────────────────────────────────────────────────────────────
-
-  function animateTo(next: number) {
-    const dir = next > step ? -1 : 1;
-    Animated.timing(slideAnim, { toValue: dir * SW * 0.3, duration: 140, useNativeDriver: true }).start(() => {
-      setStep(next);
-      slideAnim.setValue(-dir * SW * 0.3);
-      Animated.timing(slideAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start();
-    });
-  }
-
-  function goNext() { if (step < TOTAL_STEPS - 1) animateTo(step + 1); }
-  function goBack() { if (step > 0) animateTo(step - 1); }
-
-  function toggleHobby(label: string) {
-    setSelectedHobbies((prev) =>
-      prev.includes(label) ? prev.filter((h) => h !== label) : [...prev, label]
-    );
-  }
-
-  // ── Auth submit ─────────────────────────────────────────────────────────────
-
-  async function handleAuthSubmit() {
-    setAuthError("");
-    setAuthLoading(true);
-    try {
-      if (signInMode) {
-        await signIn(email.trim(), password);
-        animateTo(2); // existing user skips profile setup
-      } else {
-        await signUp(email.trim(), password);
-        goNext(); // new user fills out profile
-      }
-    } catch (err: any) {
-      setAuthError(friendlyError(err.code ?? ""));
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
-  // ── Finish ──────────────────────────────────────────────────────────────────
-
-  async function finish() {
-    await saveProfile({
-      ...profile,
-      username: username.trim() || "explorer",
-      email: email.trim(),
-      age,
-      city: city.trim(),
-      preferredCity: city.trim() || "",
-      hobbies: selectedHobbies,
-      freeTimePerDay: (freeTime as FreeTimePerDay) || "30-60",
-      hasOnboarded: true,
-    });
-    router.replace("/(tabs)/" as any);
-  }
-
-  // ── Validation ──────────────────────────────────────────────────────────────
-
-  const emailOk    = email.trim().includes("@") && email.trim().includes(".");
-  const passwordOk = password.length >= 6;
-  const ageNum     = parseInt(age, 10);
-  const ageValid   = age === "" || (!isNaN(ageNum) && ageNum >= 13 && ageNum <= 150);
-  const ageError   = age !== "" && !ageValid ? "Age must be between 13 and 150." : "";
-
-  const canContinue = [
-    true,                                      // 0 welcome
-    emailOk && passwordOk,                     // 1 account
-    username.trim().length >= 2 && ageValid,   // 2 profile
-    selectedHobbies.length >= 1,               // 3 interests
-    freeTime !== "",                           // 4 free time
-    true,                                      // 5 features
-  ];
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
-  return (
-    <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Back button + progress dots (steps 1-5) */}
-      {step > 0 && (
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={goBack} style={styles.topBackBtn}>
-            <Ionicons name="arrow-back" size={22} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.dots}>
-            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  { backgroundColor: i <= step ? colors.accent : colors.border },
-                  i === step && styles.dotActive,
-                ]}
-              />
-            ))}
-          </View>
-          <View style={{ width: 40 }} />
-        </View>
-      )}
-
-      <Animated.View style={[styles.stepWrap, { transform: [{ translateX: slideAnim }] }]}>
-        {step === 0 && (
-          <StepWelcome
-            colors={colors}
-            isDark={isDark}
-            toggleTheme={toggleTheme}
-            onCreateAccount={() => { setSignInMode(false); animateTo(1); }}
-            onLogIn={() => { setSignInMode(true); animateTo(1); }}
-          />
-        )}
-        {step === 1 && (
-          <StepAccount
-            colors={colors}
-            signInMode={signInMode} setSignInMode={setSignInMode}
-            email={email} setEmail={setEmail}
-            password={password} setPassword={setPassword}
-            authError={authError} setAuthError={setAuthError}
-            authLoading={authLoading}
-            canNext={canContinue[1]}
-            onNext={handleAuthSubmit}
-          />
-        )}
-        {step === 2 && (
-          <StepYourProfile
-            colors={colors}
-            isDark={isDark} toggleTheme={toggleTheme}
-            username={username} setUsername={setUsername}
-            age={age} setAge={setAge}
-            city={city} setCity={setCity}
-            ageError={ageError}
-            canNext={canContinue[2]}
-            onNext={goNext}
-          />
-        )}
-        {step === 3 && (
-          <StepInterests
-            colors={colors}
-            selected={selectedHobbies}
-            onToggle={toggleHobby}
-            canNext={canContinue[3]}
-            onNext={goNext}
-          />
-        )}
-        {step === 4 && (
-          <StepFreeTime
-            colors={colors}
-            value={freeTime}
-            onSelect={setFreeTime}
-            canNext={canContinue[4]}
-            onNext={goNext}
-          />
-        )}
-        {step === 5 && (
-          <StepFeatures colors={colors} onFinish={finish} />
-        )}
-      </Animated.View>
-    </SafeAreaView>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  container: { flex: 1 },
+  progressRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4,
   },
-  topBackBtn: { width: 40, height: 40, justifyContent: "center" },
+  backBtn: { width: 40, height: 40, justifyContent: "center" },
   dots: { flexDirection: "row", gap: 6, alignItems: "center" },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  dotActive: { width: 22, height: 6, borderRadius: 3 },
+  dotActive: { width: 20, height: 6, borderRadius: 3 },
   stepWrap: { flex: 1 },
-
-  // ── Shared ──
-  field: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 15,
-  },
-  fieldText: { flex: 1, fontSize: 15 },
-  fieldError: { fontSize: 12, marginTop: 2, marginLeft: 4 },
-  nextBtn: {
-    paddingVertical: 17,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-  nextBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  stepTitle: { fontSize: 24, fontWeight: "800", marginBottom: 6 },
-  stepSub: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
-
-  // ── Welcome ──
-  welcomeRoot: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  themeToggle: {
-    alignSelf: "flex-end",
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  welcomeCenter: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 16,
-  },
-  logoCircle: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  appName: { fontSize: 34, fontWeight: "900", letterSpacing: 4 },
-  tagline: { fontSize: 16, textAlign: "center", lineHeight: 24, fontStyle: "italic" },
-  welcomeButtons: { gap: 14 },
-  bigBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  bigBtnText: { color: "#fff", fontWeight: "800", fontSize: 17 },
-  bigBtnOutline: {
-    paddingVertical: 17,
-    borderRadius: 16,
-    alignItems: "center",
-    borderWidth: 2,
-  },
-  bigBtnOutlineText: { fontWeight: "800", fontSize: 17 },
-
-  // ── Auth ──
-  authContent: {
-    paddingHorizontal: 28,
-    paddingTop: 32,
-    paddingBottom: 40,
-  },
-  authTitle: { fontSize: 30, fontWeight: "900", marginBottom: 8 },
-  authSwitchRow: { marginBottom: 28 },
-  authSwitchText: { fontSize: 14, lineHeight: 20 },
-  authSwitchLink: { fontWeight: "700" },
-  authFields: { gap: 12, marginBottom: 16 },
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  forgotText: { fontSize: 13, marginBottom: 20 },
-  submitBtn: {
-    marginTop: 20,
-    paddingVertical: 17,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  submitBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-
-  // ── Profile setup ──
-  profileContent: {
-    alignItems: "center",
-    paddingHorizontal: 28,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  profileFields: { width: "100%", gap: 12, marginBottom: 20 },
-  appearanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 28,
-  },
-  appearanceLabel: { flex: 1, fontSize: 15, fontWeight: "600" },
-
-  // ── Interests ──
-  stepHeaderPad: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 4 },
-  interestScrollContent: { paddingHorizontal: 24, paddingBottom: 20 },
-  interestGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
-  interestChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 12,
-    borderWidth: 1,
-    minWidth: (SW - 72) / 2,
-    alignItems: "center",
-  },
-  interestChipText: { fontWeight: "700", fontSize: 15 },
-  customRow: { flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 12 },
-  customAddBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
-  customChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  customChipText: { fontSize: 13, fontWeight: "600" },
+  stepContent: { flex: 1, paddingHorizontal: 24, paddingTop: 32, paddingBottom: 24 },
+  stepHeader: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 12 },
   stepFooter: { paddingHorizontal: 24, paddingBottom: 28 },
+  fieldError: { fontSize: 12, marginTop: -8, marginBottom: 10, paddingHorizontal: 4 },
+  errorBox: { flexDirection: "row", alignItems: "flex-start", padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 8, marginHorizontal: 16 },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
 
-  // ── Free time ──
-  stepContentPad: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 32,
-    paddingBottom: 28,
-  },
-  freeTimeQ: { fontSize: 26, fontWeight: "800", lineHeight: 34, marginBottom: 28 },
-  freeTimeList: { gap: 12, marginBottom: 32 },
-  freeTimeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
+  // Welcome
+  welcomeContainer: { flex: 1, paddingHorizontal: 32, justifyContent: "space-between", paddingVertical: 48 },
+  welcomeTop: { alignItems: "center", flex: 1, justifyContent: "center", gap: 16 },
+  welcomeLogo: { width: 120, height: 120, resizeMode: "contain" },
+  welcomeTitle: { fontSize: 28, fontWeight: "700", textAlign: "center", lineHeight: 38 },
+  welcomeTitleBold: { fontSize: 36, fontWeight: "900" },
+  welcomeTagline: { fontSize: 18, textAlign: "center", lineHeight: 28, fontStyle: "italic" },
+  welcomeButtons: { gap: 0 },
+  welcomeBtn: { paddingVertical: 18, borderRadius: 16, alignItems: "center" },
+  welcomeBtnText: { color: "#fff", fontWeight: "800", fontSize: 18 },
+
+  // Auth sheet
+  authSheet: { flex: 1, position: "relative" },
+  authCloseBtn: { position: "absolute", top: 20, right: 20, width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", zIndex: 10 },
+  authContent: { paddingHorizontal: 28, paddingTop: 60, paddingBottom: 24 },
+  authTitle: { fontSize: 36, fontWeight: "800", marginBottom: 6 },
+  authSwitch: { fontSize: 14, marginBottom: 32 },
+  authFields: { gap: 12, marginBottom: 16 },
+  authArrowBtn: { margin: 24, marginTop: 0, height: 58, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+
+  // Icon input
+  iconInputRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 16 },
+  iconInputText: { flex: 1, fontSize: 16 },
+
+  // Basic Info
+  infoContent: { alignItems: "center", paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 },
+  avatarCircle: { width: 120, height: 120, borderRadius: 60, borderWidth: 2, alignItems: "center", justifyContent: "center", marginBottom: 32 },
+  infoFields: { width: "100%", gap: 12, marginBottom: 32 },
+  nextBtn: { paddingVertical: 18, borderRadius: 16, alignItems: "center", justifyContent: "center", width: "100%" },
+  nextBtnText: { color: "#fff", fontWeight: "700", fontSize: 17 },
+
+  // Interests
+  interestTitle: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 24 },
+  interestGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  interestChip: { paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, minWidth: (SCREEN_W - 56) / 2, alignItems: "center", justifyContent: "center" },
+  interestChipText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  customInputRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  customAddBtn: { width: 50, height: 50, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  customChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  customChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  customChipText: { fontSize: 13, fontWeight: "600" },
+
+  // Free time
+  freeTimeQuestion: { fontSize: 26, fontWeight: "700", textAlign: "center", marginBottom: 32, lineHeight: 36 },
+  freeTimeOptions: { gap: 12, marginBottom: 32 },
+  freeTimeCard: { padding: 18, borderRadius: 14, borderWidth: 1, alignItems: "center" },
   freeTimeLabel: { fontSize: 16, fontWeight: "600" },
 
-  // ── Features ──
-  featureList: { gap: 14, marginBottom: 28 },
-  featureCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 14,
-  },
-  featureIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  featureLabel: { fontSize: 16, fontWeight: "700", flex: 1 },
+  // Features
+  featuresTitleLg: { fontSize: 28, fontWeight: "800", textAlign: "center", marginBottom: 32 },
+  featureRows: { gap: 14, marginBottom: 32 },
+  featureRow: { flexDirection: "row", alignItems: "center", padding: 18, borderRadius: 14, borderWidth: 1 },
+  featureRowLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
+  featureRowChevron: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+});
+
+// ── Date picker styles ────────────────────────────────────────────────────────
+
+const dp = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modal: { width: "100%", borderRadius: 20, borderWidth: 1, overflow: "hidden", paddingBottom: 16 },
+
+  // Selected date banner
+  selectedBanner: { paddingHorizontal: 20, paddingVertical: 16 },
+  selectedYear: { color: "rgba(255,255,255,0.65)", fontSize: 13, fontWeight: "600", letterSpacing: 0.5 },
+  selectedDateText: { color: "#fff", fontSize: 26, fontWeight: "800", marginTop: 2 },
+
+  // Header
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8, paddingVertical: 14 },
+  navBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  monthYearBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 6 },
+  monthYearText: { fontSize: 17, fontWeight: "700" },
+
+  // Year picker
+  yearList: { height: 260 },
+  yearItem: { height: 44, alignItems: "center", justifyContent: "center", borderRadius: 8, marginHorizontal: 16 },
+  yearText: { fontSize: 16, fontWeight: "600" },
+
+  // Calendar
+  weekRow: { flexDirection: "row", paddingHorizontal: 8, marginBottom: 4 },
+  weekDay: { flex: 1, textAlign: "center", fontSize: 12, fontWeight: "700" },
+  grid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 8 },
+  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: "center", justifyContent: "center", borderRadius: 999 },
+  cellText: { fontSize: 14, fontWeight: "600" },
+
+  // Actions
+  actions: { flexDirection: "row", gap: 12, paddingHorizontal: 16, marginTop: 16 },
+  cancelBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
+  cancelText: { fontSize: 15, fontWeight: "600" },
+  confirmBtn: { flex: 1, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
+  confirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
